@@ -109,4 +109,5 @@ if __name__ == "__main__":
 
         conn.close()
 
+        print("sleeping for {}s...".format(PERIOD), flush=True)
         time.sleep(PERIOD)
