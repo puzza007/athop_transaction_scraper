@@ -4,7 +4,7 @@ services:
 
   at_hop_transaction_scraper:
     container_name: at_hop_transaction_scraper
-    image: d691d4b72f57
+    image: puzza007/athop_transaction_scraper
     volumes:
       - "./data:/data"
     environment:
