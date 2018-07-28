@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+
+  at_hop_transaction_scraper:
+    container_name: at_hop_transaction_scraper
+    image: d691d4b72f57
+    volumes:
+      - "./data:/data"
+    environment:
+      - "AT_USERNAME=${AT_USERNAME}"
+      - "AT_PASSWORD=${AT_PASSWORD}"
+      - "AT_CARDS=${AT_CARDS}"
+      - "AT_DATABASE_FILE=${AT_DATABASE_FILE}"
+      - "AT_PERIOD=${AT_PERIOD}"
