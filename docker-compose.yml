@@ -5,6 +5,7 @@ services:
   at_hop_transaction_scraper:
     container_name: at_hop_transaction_scraper
     image: puzza007/athop_transaction_scraper
+    restart: always
     volumes:
       - "./data:/data"
     environment:
