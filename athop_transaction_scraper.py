@@ -96,6 +96,8 @@ def scrape_transactions_for_card(conn, card_id):
 
 if __name__ == "__main__":
     print("starting...", flush=True)
+    # in case we're restarting due to an error
+    time.sleep(60)
     while True:
         ensure_database(DATABASE_FILE)
 
