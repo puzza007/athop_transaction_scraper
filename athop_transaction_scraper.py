@@ -65,31 +65,37 @@ create table transactions (
 
 
 def scrape_transactions_for_card(conn, card_id):
-    keyfob_transactions = s.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
-
     c = conn.cursor()
 
-    transactions = []
-    for t in keyfob_transactions.json()['Transactions']:
-        try:
-            tran = (card_id,
-                    t['cardtransactionid'],
-                    t['description'],
-                    t['location'],
-                    t['transactiondatetime'],
-                    t['hop-balance-display'],
-                    t['value'],
-                    t['value-display'],
-                    t['journey-id'],
-                    t['refundrequested'],
-                    t['refundable-value'],
-                    t['transaction-type-description'],
-                    t['transaction-type'])
+    try:
+        keyfob_transactions = s.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
 
-            c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
-            print("added {}".format(tran))
-        except sqlite3.IntegrityError:
-            pass
+        transactions = []
+        for t in keyfob_transactions.json()['Transactions']:
+            try:
+                tran = (card_id,
+                        t['cardtransactionid'],
+                        t['description'],
+                        t['location'],
+                        t['transactiondatetime'],
+                        t['hop-balance-display'],
+                        t['value'],
+                        t['value-display'],
+                        t['journey-id'],
+                        t['refundrequested'],
+                        t['refundable-value'],
+                        t['transaction-type-description'],
+                        t['transaction-type'])
+
+                c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
+                print("added {}".format(tran))
+            except sqlite3.IntegrityError:
+                pass
+
+    except requests.HTTPError as err:
+        print("http requests failed: {}".format(err), flush=True)
+    except json.decoder.JSONDecodeError:
+        print("failed to parse json: {}".format(keyfob_transactions.text), flush=True)
 
     conn.commit()
 
