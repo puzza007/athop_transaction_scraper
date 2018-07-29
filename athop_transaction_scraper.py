@@ -4,6 +4,7 @@ import re
 import sqlite3
 import os
 import time
+import sys
 
 USERNAME = os.getenv('AT_USERNAME')
 PASSWORD = os.getenv('AT_PASSWORD')
@@ -93,9 +94,9 @@ def scrape_transactions_for_card(conn, card_id):
                 pass
 
     except requests.HTTPError as err:
-        print("http requests failed: {}".format(err), flush=True)
+        print("http requests failed: {}".format(err), flush=True, file=sys.stderr)
     except json.decoder.JSONDecodeError:
-        print("failed to parse json: {}".format(keyfob_transactions.text), flush=True)
+        print("failed to parse json: {}".format(keyfob_transactions.text), flush=True, file=sys.stderr)
 
     conn.commit()
 
