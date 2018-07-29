@@ -13,28 +13,32 @@ CARDS = [s.strip() for s in os.getenv('AT_CARDS').split(",")]
 DATABASE_FILE = os.getenv('AT_DATABASE_FILE')
 PERIOD = int(os.getenv('AT_PERIOD'))
 
-s = requests.Session()
 
-r = s.post('https://federation.aucklandtransport.govt.nz/adfs/ls/?wa=wsignin1.0&wtrealm=https://at.govt.nz&wctx=https://at.govt.nz&wreply=https://at.govt.nz/myat/',
-           data={'UserName': USERNAME,
-                 'Password': PASSWORD,
-                 'AuthMethod': 'FormsAuthentication'})
+def login():
+    s = requests.Session()
 
-soup = BeautifulSoup(r.text, 'html.parser')
+    r = s.post('https://federation.aucklandtransport.govt.nz/adfs/ls/?wa=wsignin1.0&wtrealm=https://at.govt.nz&wctx=https://at.govt.nz&wreply=https://at.govt.nz/myat/',
+               data={'UserName': USERNAME,
+                     'Password': PASSWORD,
+                     'AuthMethod': 'FormsAuthentication'})
 
-inputs = soup.find_all('input')
-input_map = {}
-for i in inputs:
-    try:
-        input_map[i['name']] = i['value']
-    except Exception:
-        pass
+    soup = BeautifulSoup(r.text, 'html.parser')
 
-action = soup.find('form')['action']
+    inputs = soup.find_all('input')
+    input_map = {}
+    for i in inputs:
+        try:
+            input_map[i['name']] = i['value']
+        except Exception:
+            pass
 
-r2 = s.post(action, data=input_map)
+    action = soup.find('form')['action']
 
-fields = ['cardtransactionid', 'description', 'location', 'transactiondatetime', 'hop-balance-display', 'value', 'value-display', 'journey-id', 'refundrequested', 'refundable-value', 'transaction-type-description', 'transaction-type']
+    r2 = s.post(action, data=input_map)
+
+    fields = ['cardtransactionid', 'description', 'location', 'transactiondatetime', 'hop-balance-display', 'value', 'value-display', 'journey-id', 'refundrequested', 'refundable-value', 'transaction-type-description', 'transaction-type']
+
+    return s
 
 
 def ensure_database(DATABASE_FILE):
@@ -66,11 +70,11 @@ create table transactions (
     conn.close()
 
 
-def scrape_transactions_for_card(conn, card_id):
+def scrape_transactions_for_card(sess, conn, card_id):
     c = conn.cursor()
 
     try:
-        keyfob_transactions = s.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
+        keyfob_transactions = sess.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
         keyfob_transactions.raise_for_status()
 
         transactions = []
@@ -111,10 +115,11 @@ if __name__ == "__main__":
         ensure_database(DATABASE_FILE)
 
         conn = sqlite3.connect(DATABASE_FILE)
+        sess = login()
 
         for card_id in CARDS:
             print("scraping card: {}".format(card_id), flush=True)
-            scrape_transactions_for_card(conn, card_id)
+            scrape_transactions_for_card(sess, conn, card_id)
 
         conn.close()
 
