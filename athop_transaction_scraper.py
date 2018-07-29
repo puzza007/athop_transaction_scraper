@@ -71,6 +71,7 @@ def scrape_transactions_for_card(conn, card_id):
 
     try:
         keyfob_transactions = s.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
+        keyfob_transactions.raise_for_status()
 
         transactions = []
         for t in keyfob_transactions.json()['Transactions']:
