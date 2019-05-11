@@ -86,7 +86,7 @@ def scrape_transactions_for_card(sess, conn, card_id):
                         t['location'],
                         t['transactiondatetime'],
                         t['hop-balance-display'],
-                        t['value'],
+                        t.get('value'),
                         t['value-display'],
                         t['journey-id'],
                         t['refundrequested'],
