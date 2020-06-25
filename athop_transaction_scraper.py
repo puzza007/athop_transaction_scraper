@@ -1,11 +1,17 @@
 import requests
 from bs4 import BeautifulSoup
-import re
 import sqlite3
 import os
 import time
 import sys
 import json
+import logging
+
+
+logger = logging.getLogger("athop")
+FORMAT = "%(levelname)s:%(message)s"
+logging.basicConfig(format=FORMAT)
+logger.setLevel(logging.INFO)
 
 USERNAME = os.getenv('AT_USERNAME')
 PASSWORD = os.getenv('AT_PASSWORD')
@@ -35,8 +41,9 @@ def login():
     action = soup.find('form')['action']
 
     r2 = s.post(action, data=input_map)
+    r2.raise_for_status()
 
-    fields = ['cardtransactionid', 'description', 'location', 'transactiondatetime', 'hop-balance-display', 'value', 'value-display', 'journey-id', 'refundrequested', 'refundable-value', 'transaction-type-description', 'transaction-type']
+    # fields = ['cardtransactionid', 'description', 'location', 'transactiondatetime', 'hop-balance-display', 'value', 'value-display', 'journey-id', 'refundrequested', 'refundable-value', 'transaction-type-description', 'transaction-type']
 
     return s
 
@@ -77,7 +84,6 @@ def scrape_transactions_for_card(sess, conn, card_id):
         keyfob_transactions = sess.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
         keyfob_transactions.raise_for_status()
 
-        transactions = []
         for t in keyfob_transactions.json()['Transactions']:
             try:
                 tran = (card_id,
@@ -95,20 +101,20 @@ def scrape_transactions_for_card(sess, conn, card_id):
                         t['transaction-type'])
 
                 c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
-                print("added {}".format(tran))
+                logger.info("added {}", tran)
             except sqlite3.IntegrityError:
                 pass
 
     except requests.HTTPError as err:
-        print("http requests failed: {}".format(err), flush=True, file=sys.stderr)
+        logger.error("http requests failed: {}", err)
     except json.decoder.JSONDecodeError:
-        print("failed to parse json: {}".format(keyfob_transactions.text), flush=True, file=sys.stderr)
+        logger.error("failed to parse json: {}", keyfob_transactions.text)
 
     conn.commit()
 
 
 if __name__ == "__main__":
-    print("starting...", flush=True)
+    logger.info("starting...")
     # in case we're restarting due to an error
     time.sleep(60)
     while True:
@@ -118,10 +124,10 @@ if __name__ == "__main__":
         sess = login()
 
         for card_id in CARDS:
-            print("scraping card: {}".format(card_id), flush=True)
+            logger.info("scraping card: {}", card_id)
             scrape_transactions_for_card(sess, conn, card_id)
 
         conn.close()
 
-        print("sleeping for {}s...".format(PERIOD), flush=True)
+        logger.info("sleeping for {}s...", PERIOD)
         time.sleep(PERIOD)
