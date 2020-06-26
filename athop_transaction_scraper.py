@@ -101,14 +101,14 @@ def scrape_transactions_for_card(sess, conn, card_id):
                         t['transaction-type'])
 
                 c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
-                logger.info("added {}", tran)
+                logger.info("added %s", tran)
             except sqlite3.IntegrityError:
                 pass
 
     except requests.HTTPError as err:
-        logger.error("http requests failed: {}", err)
+        logger.error("http requests failed: %s", err)
     except json.decoder.JSONDecodeError:
-        logger.error("failed to parse json: {}", keyfob_transactions.text)
+        logger.error("failed to parse json: %s", keyfob_transactions.text)
 
     conn.commit()
 
@@ -124,10 +124,10 @@ if __name__ == "__main__":
         sess = login()
 
         for card_id in CARDS:
-            logger.info("scraping card: {}", card_id)
+            logger.info("scraping card: %s", card_id)
             scrape_transactions_for_card(sess, conn, card_id)
 
         conn.close()
 
-        logger.info("sleeping for {}s...", PERIOD)
+        logger.info("sleeping for %ss...", PERIOD)
         time.sleep(PERIOD)
