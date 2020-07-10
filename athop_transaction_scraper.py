@@ -3,8 +3,8 @@ from bs4 import BeautifulSoup
 import sqlite3
 import os
 import time
-import sys
-import json
+from slack import WebClient
+from slack.errors import SlackApiError
 import logging
 
 
@@ -18,6 +18,8 @@ PASSWORD = os.getenv('AT_PASSWORD')
 CARDS = [s.strip() for s in os.getenv('AT_CARDS').split(",")]
 DATABASE_FILE = os.getenv('AT_DATABASE_FILE')
 PERIOD = int(os.getenv('AT_PERIOD'))
+SLACK_TOKEN = os.getenv("AT_SLACK_API_TOKEN")
+SLACK_CHANNEL = os.getenv("AT_SLACK_CHANNEL")
 
 
 def login():
@@ -102,8 +104,37 @@ def scrape_transactions_for_card(sess, conn, card_id):
 
                 c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
                 logger.info("added %s", tran)
+                if SLACK_TOKEN and SLACK_CHANNEL:
+                    sc = WebClient(token=SLACK_TOKEN)
+                    fields = ('card_id',
+                              'cardtransactionid',
+                              'description',
+                              'location',
+                              'transactiondatetime',
+                              'hop-balance-display',
+                              'value'
+                              'value-display',
+                              'journey-id',
+                              'refundrequested',
+                              'refundable-value',
+                              'transaction-type-description',
+                              'transaction-type')
+                    d = dict(zip(fields, tran))
+                    msg = "\n".join([f"{k}: {v}" for (k, v) in d.items() if v is not None])
+                    json = [{"type": "section",
+                             "text": {
+                                 "type": "mrkdwn",
+                                 "text": msg
+                             }}]
+                    sc.chat_postMessage(
+                        channel=SLACK_CHANNEL,
+                        icon_emoji=":robot_face:",
+                        blocks=json
+                    )
             except sqlite3.IntegrityError:
                 pass
+            except SlackApiError as e:
+                logger.error(e)
 
     except requests.HTTPError as err:
         logger.error("http requests failed: %s", err)
