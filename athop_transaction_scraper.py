@@ -119,7 +119,7 @@ def scrape_transactions_for_card(sess, conn, card_id):
                               'refundable-value',
                               'transaction-type-description',
                               'transaction-type')
-                    msg = "\n".join([f"{k}: {v}" for (k, v) in zip(fields, tran)])
+                    msg = "\n".join([f"*{k}* {v}" for (k, v) in zip(fields, tran)])
                     json = [{"type": "section",
                              "text": {
                                  "type": "mrkdwn",
