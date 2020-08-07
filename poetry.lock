@@ -109,7 +109,7 @@ description = "Slack API clients for Web API and RTM API"
 name = "slackclient"
 optional = false
 python-versions = ">=3.6.0"
-version = "2.7.3"
+version = "2.8.0"
 
 [package.dependencies]
 aiohttp = ">3.5.2,<4.0.0"
@@ -151,7 +151,7 @@ idna = ">=2.0"
 multidict = ">=4.0"
 
 [metadata]
-content-hash = "68291c9728bc700e8ba9cc53dc9d4f28d31119585563c080cd65184b0835ba57"
+content-hash = "726411ffe4cf240e1f45d46d54fb47c2ed1a7526d6ef444159700a0389ce52ba"
 python-versions = "^3.8"
 
 [metadata.files]
@@ -218,8 +218,8 @@ requests = [
     {file = "requests-2.24.0.tar.gz", hash = "sha256:b3559a131db72c33ee969480840fff4bb6dd111de7dd27c8ee1f820f4f00231b"},
 ]
 slackclient = [
-    {file = "slackclient-2.7.3-py2.py3-none-any.whl", hash = "sha256:766e10d1b78b9660d644a4e70b4cd386c372ae69711b0f53c756171007fa3ae6"},
-    {file = "slackclient-2.7.3.tar.gz", hash = "sha256:cb29c0b3cddad67f8369df82aadb5e031e7457ec3c45c0c86cec10c31209f4b6"},
+    {file = "slackclient-2.8.0-py2.py3-none-any.whl", hash = "sha256:a7ea172a63b011770d3886e84d4b5c32055bab6ae6c0e03c88a98637c02456d6"},
+    {file = "slackclient-2.8.0.tar.gz", hash = "sha256:373bebed7ed5c32bca84de1a206ebe2984b830aab8d04bd1836f082de6bf9105"},
 ]
 soupsieve = [
     {file = "soupsieve-1.9.6-py2.py3-none-any.whl", hash = "sha256:feb1e937fa26a69e08436aad4a9037cd7e1d4c7212909502ba30701247ff8abd"},
