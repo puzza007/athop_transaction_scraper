@@ -1,10 +1,10 @@
 [[package]]
-category = "main"
-description = "Async http client/server framework (asyncio)"
 name = "aiohttp"
+version = "3.6.2"
+description = "Async http client/server framework (asyncio)"
+category = "main"
 optional = false
 python-versions = ">=3.5.3"
-version = "3.6.2"
 
 [package.dependencies]
 async-timeout = ">=3.0,<4.0"
@@ -17,20 +17,20 @@ yarl = ">=1.0,<2.0"
 speedups = ["aiodns", "brotlipy", "cchardet"]
 
 [[package]]
-category = "main"
-description = "Timeout context manager for asyncio programs"
 name = "async-timeout"
+version = "3.0.1"
+description = "Timeout context manager for asyncio programs"
+category = "main"
 optional = false
 python-versions = ">=3.5.3"
-version = "3.0.1"
 
 [[package]]
-category = "main"
-description = "Classes Without Boilerplate"
 name = "attrs"
+version = "19.3.0"
+description = "Classes Without Boilerplate"
+category = "main"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
-version = "19.3.0"
 
 [package.extras]
 azure-pipelines = ["coverage", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "zope.interface", "pytest-azurepipelines"]
@@ -39,61 +39,59 @@ docs = ["sphinx", "zope.interface"]
 tests = ["coverage", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "zope.interface"]
 
 [[package]]
-category = "main"
-description = "Screen-scraping library"
 name = "beautifulsoup4"
+version = "4.9.3"
+description = "Screen-scraping library"
+category = "main"
 optional = false
 python-versions = "*"
-version = "4.9.3"
 
 [package.dependencies]
-[package.dependencies.soupsieve]
-python = ">=3.0"
-version = ">1.2"
+soupsieve = {version = ">1.2", markers = "python_version >= \"3.0\""}
 
 [package.extras]
 html5lib = ["html5lib"]
 lxml = ["lxml"]
 
 [[package]]
-category = "main"
-description = "Python package for providing Mozilla's CA Bundle."
 name = "certifi"
-optional = false
-python-versions = "*"
 version = "2020.6.20"
-
-[[package]]
+description = "Python package for providing Mozilla's CA Bundle."
 category = "main"
-description = "Universal encoding detector for Python 2 and 3"
-name = "chardet"
 optional = false
 python-versions = "*"
-version = "3.0.4"
 
 [[package]]
+name = "chardet"
+version = "3.0.4"
+description = "Universal encoding detector for Python 2 and 3"
 category = "main"
-description = "Internationalized Domain Names in Applications (IDNA)"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "idna"
+version = "2.10"
+description = "Internationalized Domain Names in Applications (IDNA)"
+category = "main"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
-version = "2.10"
 
 [[package]]
-category = "main"
-description = "multidict implementation"
 name = "multidict"
+version = "4.7.6"
+description = "multidict implementation"
+category = "main"
 optional = false
 python-versions = ">=3.5"
-version = "4.7.6"
 
 [[package]]
-category = "main"
-description = "Python HTTP for Humans."
 name = "requests"
+version = "2.24.0"
+description = "Python HTTP for Humans."
+category = "main"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
-version = "2.24.0"
 
 [package.dependencies]
 certifi = ">=2017.4.17"
@@ -106,12 +104,12 @@ security = ["pyOpenSSL (>=0.14)", "cryptography (>=1.3.4)"]
 socks = ["PySocks (>=1.5.6,<1.5.7 || >1.5.7)", "win-inet-pton"]
 
 [[package]]
-category = "main"
-description = "Slack API clients for Web API and RTM API"
 name = "slackclient"
+version = "2.9.2"
+description = "Slack API clients for Web API and RTM API"
+category = "main"
 optional = false
 python-versions = ">=3.6.0"
-version = "2.7.3"
 
 [package.dependencies]
 aiohttp = ">3.5.2,<4.0.0"
@@ -120,21 +118,20 @@ aiohttp = ">3.5.2,<4.0.0"
 optional = ["aiodns (>1.0)"]
 
 [[package]]
-category = "main"
-description = "A modern CSS selector implementation for Beautiful Soup."
-marker = "python_version >= \"3.0\""
 name = "soupsieve"
+version = "1.9.6"
+description = "A modern CSS selector implementation for Beautiful Soup."
+category = "main"
 optional = false
 python-versions = "*"
-version = "1.9.6"
 
 [[package]]
-category = "main"
-description = "HTTP library with thread-safe connection pooling, file post, and more."
 name = "urllib3"
+version = "1.25.9"
+description = "HTTP library with thread-safe connection pooling, file post, and more."
+category = "main"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, <4"
-version = "1.25.9"
 
 [package.extras]
 brotli = ["brotlipy (>=0.6.0)"]
@@ -142,21 +139,21 @@ secure = ["certifi", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "pyOpenSSL (>=0
 socks = ["PySocks (>=1.5.6,<1.5.7 || >1.5.7,<2.0)"]
 
 [[package]]
-category = "main"
-description = "Yet another URL library"
 name = "yarl"
+version = "1.4.2"
+description = "Yet another URL library"
+category = "main"
 optional = false
 python-versions = ">=3.5"
-version = "1.4.2"
 
 [package.dependencies]
 idna = ">=2.0"
 multidict = ">=4.0"
 
 [metadata]
-content-hash = "99e8c7e90da1de86fc38c8b727151f704d2ab517f16ad37a7ea3cf9ffe42585b"
-lock-version = "1.0"
+lock-version = "1.1"
 python-versions = "^3.8"
+content-hash = "9dde477ef0f45a92197053eb7c3f6af93116a3ae1702ba6999584a31d7adee7e"
 
 [metadata.files]
 aiohttp = [
@@ -222,8 +219,8 @@ requests = [
     {file = "requests-2.24.0.tar.gz", hash = "sha256:b3559a131db72c33ee969480840fff4bb6dd111de7dd27c8ee1f820f4f00231b"},
 ]
 slackclient = [
-    {file = "slackclient-2.7.3-py2.py3-none-any.whl", hash = "sha256:766e10d1b78b9660d644a4e70b4cd386c372ae69711b0f53c756171007fa3ae6"},
-    {file = "slackclient-2.7.3.tar.gz", hash = "sha256:cb29c0b3cddad67f8369df82aadb5e031e7457ec3c45c0c86cec10c31209f4b6"},
+    {file = "slackclient-2.9.2-py2.py3-none-any.whl", hash = "sha256:cc36bbf804a658caaccdf81333d2951c43c21f13deca8a6f4c00505b727c572e"},
+    {file = "slackclient-2.9.2.tar.gz", hash = "sha256:07ec0340753987154f60820e0b9f98e111a5b18a4b17cfd5f352a6f649e9163a"},
 ]
 soupsieve = [
     {file = "soupsieve-1.9.6-py2.py3-none-any.whl", hash = "sha256:feb1e937fa26a69e08436aad4a9037cd7e1d4c7212909502ba30701247ff8abd"},
