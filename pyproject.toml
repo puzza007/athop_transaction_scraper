@@ -8,7 +8,7 @@ authors = ["Paul Oliver <puzza007@gmail.com>"]
 python = "^3.8"
 requests = "^2.24.0"
 beautifulsoup4 = "^4.9.3"
-slackclient = "^2.7.3"
+slackclient = "^2.9.3"
 
 [tool.poetry.dev-dependencies]
 
