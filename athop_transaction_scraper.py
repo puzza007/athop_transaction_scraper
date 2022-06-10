@@ -1,12 +1,12 @@
+import logging
+import os
+import sqlite3
+import time
+
 import requests
 from bs4 import BeautifulSoup
-import sqlite3
-import os
-import time
 from slack import WebClient
 from slack.errors import SlackApiError
-import logging
-
 
 logger = logging.getLogger("athop")
 FORMAT = "%(levelname)s:%(message)s"
@@ -83,7 +83,7 @@ def scrape_transactions_for_card(sess, conn, card_id):
     c = conn.cursor()
 
     try:
-        keyfob_transactions = sess.get("https://at.govt.nz/hop/cards/{}/transactions".format(card_id))
+        keyfob_transactions = sess.get(f"https://at.govt.nz/hop/cards/{card_id}/transactions")
         keyfob_transactions.raise_for_status()
 
         for t in keyfob_transactions.json()['Transactions']:
@@ -112,7 +112,7 @@ def scrape_transactions_for_card(sess, conn, card_id):
                               'location',
                               'transactiondatetime',
                               'hop-balance-display',
-                              'value'
+                              'value',
                               'value-display',
                               'journey-id',
                               'refundrequested',
