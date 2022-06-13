@@ -1,0 +1,5 @@
+dbs:
+  - path: /data/athop.db
+    replicas:
+      - url: sftp://USER@HOST:22/backup/path
+        key-path: /etc/litestream_rsa

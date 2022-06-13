@@ -15,6 +15,19 @@ export AT_SLACK_API_TOKEN=xoxp-7626728587-34789439-74538973
 export AT_SLACK_CHANNEL='#notifications'
 ```
 
+Create an SSH key for litestream backup to remote server (you may not
+want this in which case edit docker-compose to remove the litestream
+section)
+
+```shell
+❯ ssh-keygen
+Generating public/private rsa key pair.
+Enter file in which to save the key (~/.ssh/id_rsa): ~/athop_transaction_scraper/litestream_rsa
+...
+```
+
+Edit `litestream.yml`
+
 Start container
 
 ```shell
@@ -22,4 +35,3 @@ docker-compose up -d
 ```
 
 Your data should now be in `./data/athop.db`
-
