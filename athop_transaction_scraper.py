@@ -86,6 +86,7 @@ def scrape_transactions_for_card(sess, conn, card_id):
         keyfob_transactions = sess.get(f"https://at.govt.nz/hop/cards/{card_id}/transactions")
         keyfob_transactions.raise_for_status()
 
+        slack_messages = []
         for t in keyfob_transactions.json()['Transactions']:
             try:
                 tran = (card_id,
@@ -125,15 +126,18 @@ def scrape_transactions_for_card(sess, conn, card_id):
                                  "type": "mrkdwn",
                                  "text": msg
                              }}]
-                    sc.chat_postMessage(
-                        channel=SLACK_CHANNEL,
-                        icon_emoji=":robot_face:",
-                        blocks=json
-                    )
+                    slack_messages.insert(0, blocks)
             except sqlite3.IntegrityError:
                 pass
             except SlackApiError as e:
                 logger.error(e)
+
+        for block in slack_messages:
+            sc.chat_postMessage(
+                channel=SLACK_CHANNEL,
+                icon_emoji=":robot_face:",
+                blocks=json
+            )
 
     except requests.HTTPError as err:
         logger.error("http requests failed: %s", err)
