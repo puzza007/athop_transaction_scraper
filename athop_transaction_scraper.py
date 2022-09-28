@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import logging
 import os
 import sqlite3
@@ -126,13 +128,13 @@ def scrape_transactions_for_card(sess, conn, card_id):
                                  "type": "mrkdwn",
                                  "text": msg
                              }}]
-                    slack_messages.insert(0, blocks)
+                    slack_messages.insert(0, json)
             except sqlite3.IntegrityError:
                 pass
             except SlackApiError as e:
                 logger.error(e)
 
-        for block in slack_messages:
+        for json in slack_messages:
             sc.chat_postMessage(
                 channel=SLACK_CHANNEL,
                 icon_emoji=":robot_face:",
