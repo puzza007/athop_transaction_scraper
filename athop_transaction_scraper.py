@@ -105,6 +105,12 @@ def scrape_transactions_for_card(sess, conn, card_id):
                         t['transaction-type-description'],
                         t['transaction-type'])
 
+                # Skip these because we're waiting on the real data
+                description = tran[2]
+                if description == "TRANSACTION(S) PENDING":
+                    logger.info("Skipping pending transaction(s)")
+                    continue
+
                 c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
                 logger.info("added %s", tran)
                 if SLACK_TOKEN and SLACK_CHANNEL:
