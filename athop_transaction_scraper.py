@@ -113,43 +113,44 @@ def scrape_transactions_for_card(sess, conn, card_id):
 
                 c.execute('INSERT INTO transactions (card_id,cardtransactionid, description, location, transactiondatetime, hop_balance_display, value, value_display, journey_id, refundrequested, refundable_value, transaction_type_description, transaction_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', tran)
                 logger.info("added %s", tran)
-                if SLACK_TOKEN and SLACK_CHANNEL:
-                    sc = WebClient(token=SLACK_TOKEN)
-                    fields = ('card_id',
-                              'cardtransactionid',
-                              'description',
-                              'location',
-                              'transactiondatetime',
-                              'hop-balance-display',
-                              'value',
-                              'value-display',
-                              'journey-id',
-                              'refundrequested',
-                              'refundable-value',
-                              'transaction-type-description',
-                              'transaction-type')
-                    msg = "\n".join([f"*{k}* {v}" for (k, v) in zip(fields, tran)])
-                    json = [{"type": "section",
-                             "text": {
-                                 "type": "mrkdwn",
-                                 "text": msg
-                             }}]
-                    slack_messages.insert(0, json)
+                fields = ('card_id',
+                          'cardtransactionid',
+                          'description',
+                          'location',
+                          'transactiondatetime',
+                          'hop-balance-display',
+                          'value',
+                          'value-display',
+                          'journey-id',
+                          'refundrequested',
+                          'refundable-value',
+                          'transaction-type-description',
+                          'transaction-type')
+                msg = "\n".join([f"*{k}* {v}" for (k, v) in zip(fields, tran)])
+                json = [{"type": "section",
+                         "text": {
+                             "type": "mrkdwn",
+                             "text": msg
+                         }}]
+                slack_messages.insert(0, json)
             except sqlite3.IntegrityError:
                 pass
             except SlackApiError as e:
                 logger.error(e)
 
-        for json in slack_messages:
-            sc.chat_postMessage(
-                channel=SLACK_CHANNEL,
-                icon_emoji=":robot_face:",
-                blocks=json
-            )
+        if SLACK_TOKEN and SLACK_CHANNEL:
+            sc = WebClient(token=SLACK_TOKEN)
+
+            for json in slack_messages:
+                sc.chat_postMessage(
+                    channel=SLACK_CHANNEL,
+                    icon_emoji=":robot_face:",
+                    blocks=json
+                )
 
     except requests.HTTPError as err:
         logger.error("http requests failed: %s", err)
-    except json.decoder.JSONDecodeError:
+    except requests.exceptions.JSONDecodeError:
         logger.error("failed to parse json: %s", keyfob_transactions.text)
 
     conn.commit()
