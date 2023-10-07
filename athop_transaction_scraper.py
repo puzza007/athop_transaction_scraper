@@ -27,8 +27,10 @@ SLACK_CHANNEL = os.getenv("AT_SLACK_CHANNEL")
 def login():
     s = requests.Session()
 
+    login_page = s.get("https://at.govt.nz/account/SignIn/MyATAuth")
+
     r = s.post(
-        "https://federation.aucklandtransport.govt.nz/adfs/ls/?wa=wsignin1.0&wtrealm=https://at.govt.nz&wctx=https://at.govt.nz&wreply=https://at.govt.nz/myat/",
+        login_page.url,
         data={
             "UserName": USERNAME,
             "Password": PASSWORD,
