@@ -50,15 +50,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy project files
+# Copy dependency file
 COPY pyproject.toml /app/
 WORKDIR /app
 
-# Install dependencies using uv
+# Install dependencies using uv (just the dependencies, not as a package)
 RUN uv pip install --system -r pyproject.toml
 
 VOLUME /data
 
-COPY athop_transaction_scraper.py /app/athop_transaction_scraper.py
+# Copy application files
+COPY athop_transaction_scraper.py schema.sql /app/
 
 CMD ["python", "/app/athop_transaction_scraper.py"]

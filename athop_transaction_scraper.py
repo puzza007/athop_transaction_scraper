@@ -8,7 +8,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, Generator, List, NamedTuple, Optional
 from zoneinfo import ZoneInfo
 
 import requests
@@ -20,7 +20,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+    WebDriverException,
+)
 from slack import WebClient  # type: ignore[import-not-found]
 from slack.errors import SlackApiError  # type: ignore[import-not-found]
 
@@ -63,12 +67,12 @@ class Config:
         self.password = self._get_required("AT_PASSWORD")
         self.cards = self._parse_cards(self._get_required("AT_CARDS"))
         self.database_file = self._get_required("AT_DATABASE_FILE")
-        self.period = int(os.getenv("AT_PERIOD", "3600"))
-        self.startup_delay = int(os.getenv("AT_STARTUP_DELAY", "60"))
+        self.period = self._get_int_env("AT_PERIOD", 3600)
+        self.startup_delay = self._get_int_env("AT_STARTUP_DELAY", 60)
         self.slack_token = os.getenv("AT_SLACK_API_TOKEN")
         self.slack_channel = os.getenv("AT_SLACK_CHANNEL")
-        self.max_retries = int(os.getenv("AT_MAX_RETRIES", "3"))
-        self.request_timeout = int(os.getenv("AT_REQUEST_TIMEOUT", "30"))
+        self.max_retries = self._get_int_env("AT_MAX_RETRIES", 3)
+        self.request_timeout = self._get_int_env("AT_REQUEST_TIMEOUT", 30)
 
     @staticmethod
     def _get_required(key: str) -> str:
@@ -77,6 +81,16 @@ class Config:
             logger.error(f"Required environment variable {key} is not set")
             sys.exit(1)
         return value
+
+    @staticmethod
+    def _get_int_env(key: str, default: int) -> int:
+        """Get integer environment variable with validation."""
+        value_str = os.getenv(key, str(default))
+        try:
+            return int(value_str)
+        except ValueError:
+            logger.error(f"Invalid {key} value: {value_str!r} (must be an integer)")
+            sys.exit(1)
 
     @staticmethod
     def _parse_cards(cards_str: str) -> Dict[str, Optional[str]]:
@@ -207,8 +221,10 @@ class ATHopScraper:
                     )
                     continue_button.click()
                     time.sleep(2)
-                except (TimeoutException, Exception):
-                    logger.info("No continue button found, page might auto-submit")
+                except (TimeoutException, NoSuchElementException) as e:
+                    logger.info(
+                        f"No continue button found: {e}, page might auto-submit"
+                    )
 
             # Now wait for the redirect to at.govt.nz (with longer timeout as it involves OIDC flow)
             wait_long = WebDriverWait(driver, 30)
@@ -223,9 +239,10 @@ class ATHopScraper:
 
             # Transfer cookies from Selenium to requests session
             self.session = self._create_session()
-            selenium_cookies = driver.get_cookies()
+            if self.session is None:
+                raise RuntimeError("Failed to create session")
 
-            assert self.session is not None  # Created just above
+            selenium_cookies = driver.get_cookies()
             for cookie in selenium_cookies:
                 self.session.cookies.set(
                     cookie["name"], cookie["value"], domain=cookie.get("domain")
@@ -244,15 +261,15 @@ class ATHopScraper:
                     screenshot_path = "/tmp/login_error.png"
                     driver.save_screenshot(screenshot_path)
                     logger.error(f"Screenshot saved to {screenshot_path}")
-                except Exception as e:
+                except WebDriverException as e:
                     logger.debug(f"Failed to save screenshot: {e}")
             return False
-        except Exception as e:
+        except WebDriverException as e:
             logger.error(f"Login failed: {e}")
             if driver:
                 try:
                     driver.save_screenshot("/tmp/login_error.png")
-                except Exception as e:
+                except WebDriverException as e:
                     logger.debug(f"Failed to save screenshot: {e}")
             return False
         finally:
@@ -260,7 +277,7 @@ class ATHopScraper:
                 driver.quit()
 
     @contextmanager
-    def database_connection(self):
+    def database_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Context manager for database connections."""
         conn = None
         try:
@@ -397,7 +414,7 @@ class ATHopScraper:
         amount_display = (
             txn.value_display
             if txn.value_display
-            else (f"${txn.value:.2f}" if txn.value else "N/A")
+            else (f"${txn.value:.2f}" if txn.value is not None else "N/A")
         )
 
         # Build rich block layout
@@ -553,10 +570,10 @@ class ATHopScraper:
                 else:
                     consecutive_failures += 1
 
-                # Exponential backoff on failures
+                # Exponential backoff on failures (capped at 30 minutes)
                 if consecutive_failures > 0:
                     wait_time = min(
-                        300 * (2 ** (consecutive_failures - 1)), self.config.period
+                        60 * (2 ** (consecutive_failures - 1)), 1800  # Cap at 30min
                     )
                     logger.warning(
                         f"Backing off for {wait_time}s due to {consecutive_failures} failures"

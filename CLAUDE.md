@@ -76,9 +76,9 @@ Configuration is managed via a `.env` file (see `.env.example` for template):
 - `AT_USERNAME`: AT HOP account email
 - `AT_PASSWORD`: Account password
 - `AT_CARDS`: Comma-separated HOP card numbers, optionally with names in format `card_number:card_name` (e.g., `123456:Paul,789012:Family`)
+- `AT_DATABASE_FILE`: SQLite database path
 
 **Optional:**
-- `AT_DATABASE_FILE`: SQLite database path (default: `/data/athop.db` in Docker)
 - `AT_PERIOD`: Scraping interval in seconds (default: 3600)
 - `AT_STARTUP_DELAY`: Initial delay before first scrape in seconds (default: 60)
 - `AT_SLACK_API_TOKEN`: Slack bot token for notifications
