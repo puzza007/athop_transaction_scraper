@@ -478,6 +478,166 @@ class ATHopScraper:
         except SlackApiError as e:
             logger.error(f"Slack notification failed: {e}")
 
+    def _check_new_transactions_for_mismatch(
+        self, card_id: str, card_name: Optional[str], new_count: int
+    ) -> None:
+        """Check if newly added transactions create tap on/off mismatches."""
+        if not self.slack_client:
+            return
+
+        with self.database_connection() as conn:
+            # Get the last 2 travel transactions (Tag on/Tag off only)
+            cursor = conn.execute(
+                """
+                SELECT cardtransactionid, transaction_type_description,
+                       transactiondatetime, location
+                FROM transactions
+                WHERE card_id = ?
+                  AND transaction_type_description IN ('Tag on', 'Tag off')
+                  AND transactiondatetime NOT LIKE '0001%'
+                ORDER BY transactiondatetime DESC
+                LIMIT 2
+                """,
+                (card_id,),
+            )
+            transactions = cursor.fetchall()
+
+            # Need at least 2 transactions to detect a mismatch
+            if len(transactions) < 2:
+                return
+
+            current_txn_id, current_type, current_time, current_location = transactions[
+                0
+            ]
+            prev_txn_id, prev_type, prev_time, prev_location = transactions[1]
+
+            # Check for pattern break: same type twice in a row
+            if current_type == prev_type:
+                # Determine mismatch type
+                if current_type == "Tag on":
+                    mismatch_type = "missing_tag_off"
+                    missing_action = "tag off"
+                else:
+                    mismatch_type = "missing_tag_on"
+                    missing_action = "tag on"
+
+                # Check if we've already notified about this mismatch
+                cursor = conn.execute(
+                    """
+                    SELECT 1 FROM tap_mismatch_notifications
+                    WHERE card_id = ? AND transaction_id = ?
+                    """,
+                    (card_id, current_txn_id),
+                )
+                if cursor.fetchone():
+                    logger.debug(
+                        f"Already notified about mismatch for transaction {current_txn_id}"
+                    )
+                    return
+
+                # Send notification
+                self._send_mismatch_notification(
+                    card_id,
+                    card_name,
+                    current_txn_id,
+                    current_type,
+                    current_time,
+                    current_location,
+                    prev_type,
+                    prev_time,
+                    prev_location,
+                    missing_action,
+                )
+
+                # Record that we've notified
+                conn.execute(
+                    """
+                    INSERT INTO tap_mismatch_notifications
+                    (card_id, transaction_id, mismatch_type, notified_at, previous_transaction_id)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        card_id,
+                        current_txn_id,
+                        mismatch_type,
+                        datetime.now(AUCKLAND_TZ).isoformat(),
+                        prev_txn_id,
+                    ),
+                )
+                logger.info(
+                    f"Sent mismatch notification for {mismatch_type} on card {card_id}"
+                )
+
+    def _send_mismatch_notification(
+        self,
+        card_id: str,
+        card_name: Optional[str],
+        current_txn_id: str,
+        current_type: str,
+        current_time: str,
+        current_location: str,
+        prev_type: str,
+        prev_time: str,
+        prev_location: str,
+        missing_action: str,
+    ) -> None:
+        """Send Slack notification for tap mismatch."""
+        if not self.slack_client:
+            return
+
+        card_display = f"{card_name}'s Card" if card_name else f"Card {card_id[-4:]}"
+
+        # Choose emoji based on mismatch type
+        if missing_action == "tag off":
+            emoji = "⚠️"
+            alert_type = "Missing Tag Off"
+        else:
+            emoji = "🔔"
+            alert_type = "Missing Tag On"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"{emoji} {alert_type} Detected - {card_display}",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Pattern detected:* {prev_type} → {current_type}\n*Missing:* {missing_action}",
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Previous Transaction:*\n{prev_time}\n{prev_type} at {prev_location}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Current Transaction:*\n{current_time}\n{current_type} at {current_location}",
+                    },
+                ],
+            },
+            {"type": "divider"},
+        ]
+
+        try:
+            assert self.config.slack_channel is not None
+            self.slack_client.chat_postMessage(
+                channel=self.config.slack_channel,
+                icon_emoji=":warning:",
+                blocks=blocks,
+                text=f"{alert_type}: {prev_type} → {current_type}",
+            )
+        except SlackApiError as e:
+            logger.error(f"Mismatch notification failed: {e}")
+
     def scrape_card(self, card_id: str, card_name: Optional[str] = None) -> int:
         """Scrape transactions for a single card. Returns count of new transactions."""
         transactions = self.fetch_transactions(card_id)
@@ -511,6 +671,10 @@ class ATHopScraper:
                 except sqlite3.IntegrityError:
                     # Transaction already exists
                     pass
+
+        # Check for tap on/off mismatches if we added new transactions
+        if new_count > 0:
+            self._check_new_transactions_for_mismatch(card_id, card_name, new_count)
 
         return new_count
 

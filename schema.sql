@@ -15,3 +15,12 @@ create table transactions (
        transaction_type,
        PRIMARY KEY (card_id, cardtransactionid)
 );
+
+create table if not exists tap_mismatch_notifications (
+       card_id TEXT,
+       transaction_id TEXT,
+       mismatch_type TEXT,
+       notified_at TEXT,
+       previous_transaction_id TEXT,
+       PRIMARY KEY (card_id, transaction_id)
+);
