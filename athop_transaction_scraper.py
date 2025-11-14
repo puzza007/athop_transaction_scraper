@@ -239,8 +239,6 @@ class ATHopScraper:
 
             # Transfer cookies from Selenium to requests session
             self.session = self._create_session()
-            if self.session is None:
-                raise RuntimeError("Failed to create session")
 
             selenium_cookies = driver.get_cookies()
             for cookie in selenium_cookies:
@@ -309,6 +307,8 @@ class ATHopScraper:
             if os.path.exists(schema_file):
                 with open(schema_file, "r") as f:
                     schema = f.read()
+                # executescript can handle multiple statements
+                conn.executescript(schema)
             else:
                 # Fallback to embedded schema
                 schema = """
@@ -330,8 +330,7 @@ class ATHopScraper:
                     PRIMARY KEY (card_id, cardtransactionid)
                 )
                 """
-
-            conn.execute(schema)
+                conn.execute(schema)
             logger.info("Database initialized")
 
     def fetch_transactions(self, card_id: str) -> Optional[List[Dict[str, Any]]]:
@@ -413,7 +412,7 @@ class ATHopScraper:
         # Format amount - use value_display if available, otherwise format value
         amount_display = (
             txn.value_display
-            if txn.value_display
+            if txn.value_display is not None
             else (f"${txn.value:.2f}" if txn.value is not None else "N/A")
         )
 
@@ -467,8 +466,12 @@ class ATHopScraper:
         ]
 
         try:
-            # slack_channel is guaranteed to be non-None when slack_client exists
-            assert self.config.slack_channel is not None
+            # Ensure slack_channel is not None before sending message
+            if self.config.slack_channel is None:
+                logger.error(
+                    "Slack channel is not configured; cannot send notification."
+                )
+                return
             self.slack_client.chat_postMessage(
                 channel=self.config.slack_channel,
                 icon_emoji=":robot_face:",
@@ -628,7 +631,12 @@ class ATHopScraper:
         ]
 
         try:
-            assert self.config.slack_channel is not None
+            # Ensure slack_channel is not None before sending message
+            if self.config.slack_channel is None:
+                logger.error(
+                    "Slack channel is not configured; cannot send mismatch notification."
+                )
+                return
             self.slack_client.chat_postMessage(
                 channel=self.config.slack_channel,
                 icon_emoji=":warning:",
