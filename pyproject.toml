@@ -9,3 +9,10 @@ dependencies = [
     "slackclient>=2.7.3",
     "selenium>=4.15.0",
 ]
+
+[dependency-groups]
+dev = [
+    "black>=24.0.0",
+    "mypy>=1.0.0",
+    "types-requests>=2.31.0",
+]

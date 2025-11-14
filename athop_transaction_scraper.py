@@ -467,6 +467,8 @@ class ATHopScraper:
         ]
 
         try:
+            # slack_channel is guaranteed to be non-None when slack_client exists
+            assert self.config.slack_channel is not None
             self.slack_client.chat_postMessage(
                 channel=self.config.slack_channel,
                 icon_emoji=":robot_face:",
