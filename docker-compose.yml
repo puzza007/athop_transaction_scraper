@@ -8,10 +8,11 @@ services:
     volumes:
       - "./data:/data"
     environment:
-      - "AT_USERNAME=${AT_USERNAME}"
-      - "AT_PASSWORD=${AT_PASSWORD}"
-      - "AT_CARDS=${AT_CARDS}"
-      - "AT_DATABASE_FILE=${AT_DATABASE_FILE}"
-      - "AT_PERIOD=${AT_PERIOD}"
-      - "AT_SLACK_API_TOKEN=${AT_SLACK_API_TOKEN}"
-      - "AT_SLACK_CHANNEL=${AT_SLACK_CHANNEL}"
+      - AT_USERNAME=${AT_USERNAME}
+      - AT_PASSWORD=${AT_PASSWORD}
+      - AT_CARDS=${AT_CARDS}
+      - AT_DATABASE_FILE=/data/athop.db
+      - AT_PERIOD=${AT_PERIOD:-3600}
+      - AT_STARTUP_DELAY=${AT_STARTUP_DELAY:-60}
+      - AT_SLACK_API_TOKEN=${AT_SLACK_API_TOKEN}
+      - AT_SLACK_CHANNEL=${AT_SLACK_CHANNEL}

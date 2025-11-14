@@ -1,15 +1,11 @@
-[tool.poetry]
+[project]
 name = "athop_transaction_scraper"
 version = "0.1.0"
-description = ""
-authors = ["Paul Oliver <puzza007@gmail.com>"]
-
-[tool.poetry.dependencies]
-python = "^3.8"
-requests = "^2.32.3"
-beautifulsoup4 = "^4.12.3"
-slackclient = "^2.7.3"
-
-[build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+description = "AT HOP transaction scraper with Slack notifications"
+authors = [{name = "Paul Oliver", email = "puzza007@gmail.com"}]
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0",
+    "slackclient>=2.7.3",
+    "selenium>=4.15.0",
+]

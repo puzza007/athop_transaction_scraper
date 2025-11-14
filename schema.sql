@@ -1,5 +1,6 @@
 create table transactions (
        card_id,
+       card_name,
        cardtransactionid,
        description,
        location,
