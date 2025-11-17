@@ -652,6 +652,9 @@ class ATHopScraper:
         if transactions is None:
             return 0
 
+        # Sort transactions by datetime to ensure chronological order for notifications
+        transactions.sort(key=lambda t: t.get("transactiondatetime", ""))
+
         new_count = 0
         with self.database_connection() as conn:
             for transaction in transactions:
