@@ -2,6 +2,7 @@
 
 import logging
 import os
+import statistics
 import shutil
 import sqlite3
 import sys
@@ -57,6 +58,15 @@ class Transaction(NamedTuple):
     refundable_value: float
     transaction_type_description: str
     transaction_type: str
+
+
+class TripStats(NamedTuple):
+    """Trip duration statistics."""
+
+    current_mins: float
+    avg_mins: Optional[float]
+    stddev_mins: Optional[float]
+    sample_count: int
 
 
 class Config:
@@ -390,7 +400,75 @@ class ATHopScraper:
             logger.error(f"Missing required field in transaction: {e}")
             return None
 
-    def send_slack_notification(self, txn: Transaction) -> None:
+    @staticmethod
+    def _parse_duration_mins(start_iso: str, end_iso: str) -> Optional[float]:
+        """Parse ISO 8601 timestamps and return duration in minutes."""
+        try:
+            start = datetime.fromisoformat(start_iso)
+            end = datetime.fromisoformat(end_iso)
+            mins = (end - start).total_seconds() / 60
+            return mins if mins > 0 else None
+        except ValueError:
+            return None
+
+    def _get_trip_stats(
+        self, txn: Transaction, conn: sqlite3.Connection
+    ) -> Optional[TripStats]:
+        """Get trip statistics for a Tag off transaction."""
+        if txn.transaction_type_description != "Tag off":
+            return None
+
+        # Find the matching Tag on for this journey
+        tag_on = conn.execute(
+            """
+            SELECT location, transactiondatetime FROM transactions
+            WHERE card_id = ? AND journey_id = ? AND transaction_type_description = 'Tag on'
+            """,
+            (txn.card_id, txn.journey_id),
+        ).fetchone()
+
+        if not tag_on:
+            return None
+
+        origin, tag_on_time = tag_on
+        current_mins = self._parse_duration_mins(tag_on_time, txn.transactiondatetime)
+        if not current_mins:
+            return None
+
+        # Find historical trips on the same route
+        historical = conn.execute(
+            """
+            SELECT t_on.transactiondatetime, t_off.transactiondatetime
+            FROM transactions t_on
+            JOIN transactions t_off ON t_on.card_id = t_off.card_id
+              AND t_on.journey_id = t_off.journey_id
+            WHERE t_on.card_id = ?
+              AND t_on.transaction_type_description = 'Tag on'
+              AND t_off.transaction_type_description = 'Tag off'
+              AND t_on.location = ? AND t_off.location = ?
+              AND t_off.cardtransactionid != ?
+              AND t_on.transactiondatetime NOT LIKE '0001%'
+              AND t_off.transactiondatetime NOT LIKE '0001%'
+            """,
+            (txn.card_id, origin, txn.location, txn.cardtransactionid),
+        ).fetchall()
+
+        durations = [
+            d
+            for on_time, off_time in historical
+            if (d := self._parse_duration_mins(on_time, off_time))
+        ]
+
+        if not durations:
+            return TripStats(current_mins, None, None, 0)
+
+        avg = statistics.mean(durations)
+        stddev = statistics.pstdev(durations) if len(durations) >= 2 else None
+        return TripStats(current_mins, avg, stddev, len(durations))
+
+    def send_slack_notification(
+        self, txn: Transaction, conn: Optional[sqlite3.Connection] = None
+    ) -> None:
         """Send Slack notification for new transaction."""
         if not self.slack_client:
             return
@@ -453,17 +531,57 @@ class ATHopScraper:
                     },
                 ],
             },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"Transaction ID: {txn.cardtransactionid} | Type: {txn.transaction_type_description}",
-                    }
-                ],
-            },
-            {"type": "divider"},
         ]
+
+        # Add trip stats for Tag off events (requires db connection)
+        trip_stats = self._get_trip_stats(txn, conn) if conn else None
+        if trip_stats:
+            current_mins, avg_mins, stddev_mins, sample_count = trip_stats
+
+            # Format current trip time
+            trip_time_text = f"*Trip Time:*\n{current_mins:.0f} min"
+
+            # Format historical stats if available
+            if avg_mins is not None and sample_count > 0:
+                stats_text = f"*Historical ({sample_count} trips):*\n"
+                stats_text += f"Avg: {avg_mins:.0f} min"
+                if stddev_mins is not None:
+                    stats_text += f" (±{stddev_mins:.0f})"
+
+                # Add comparison indicator
+                if stddev_mins is not None and stddev_mins > 0:
+                    z_score = (current_mins - avg_mins) / stddev_mins
+                    if z_score > 2:
+                        trip_time_text += " :warning: (slow)"
+                    elif z_score < -2:
+                        trip_time_text += " :zap: (fast)"
+            else:
+                stats_text = "*Historical:*\nNo prior trips"
+
+            blocks.append(
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": trip_time_text},
+                        {"type": "mrkdwn", "text": stats_text},
+                    ],
+                }
+            )
+
+        blocks.extend(
+            [
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"Transaction ID: {txn.cardtransactionid} | Type: {txn.transaction_type_description}",
+                        }
+                    ],
+                },
+                {"type": "divider"},
+            ]
+        )
 
         try:
             # Ensure slack_channel is not None before sending message
@@ -655,8 +773,9 @@ class ATHopScraper:
         # Sort transactions by datetime to ensure chronological order for notifications
         transactions.sort(key=lambda t: t.get("transactiondatetime", ""))
 
-        new_count = 0
+        new_transactions: List[Transaction] = []
         with self.database_connection() as conn:
+            # First pass: insert all transactions
             for transaction in transactions:
                 txn = self.process_transaction(card_id, card_name, transaction)
                 if not txn:
@@ -673,21 +792,26 @@ class ATHopScraper:
                         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         txn,
                     )
-                    new_count += 1
+                    new_transactions.append(txn)
                     logger.info(
                         f"New transaction: {txn.cardtransactionid} for card {card_id} ({card_name or 'unnamed'})"
                     )
-                    self.send_slack_notification(txn)
 
                 except sqlite3.IntegrityError:
                     # Transaction already exists
                     pass
 
-        # Check for tap on/off mismatches if we added new transactions
-        if new_count > 0:
-            self._check_new_transactions_for_mismatch(card_id, card_name, new_count)
+            # Second pass: send notifications after all inserts are done
+            for txn in new_transactions:
+                self.send_slack_notification(txn, conn)
 
-        return new_count
+        # Check for tap on/off mismatches if we added new transactions
+        if new_transactions:
+            self._check_new_transactions_for_mismatch(
+                card_id, card_name, len(new_transactions)
+            )
+
+        return len(new_transactions)
 
     def run_once(self) -> bool:
         """Run one complete scraping cycle. Returns success status."""
