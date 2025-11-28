@@ -1,4 +1,4 @@
-create table transactions (
+create table if not exists transactions (
        card_id,
        card_name,
        cardtransactionid,

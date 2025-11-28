@@ -322,7 +322,7 @@ class ATHopScraper:
             else:
                 # Fallback to embedded schema
                 schema = """
-                CREATE TABLE transactions (
+                CREATE TABLE IF NOT EXISTS transactions (
                     card_id TEXT,
                     card_name TEXT,
                     cardtransactionid TEXT,
@@ -338,9 +338,18 @@ class ATHopScraper:
                     transaction_type_description TEXT,
                     transaction_type TEXT,
                     PRIMARY KEY (card_id, cardtransactionid)
-                )
+                );
+
+                CREATE TABLE IF NOT EXISTS tap_mismatch_notifications (
+                    card_id TEXT,
+                    transaction_id TEXT,
+                    mismatch_type TEXT,
+                    notified_at TEXT,
+                    previous_transaction_id TEXT,
+                    PRIMARY KEY (card_id, transaction_id)
+                );
                 """
-                conn.execute(schema)
+                conn.executescript(schema)
             logger.info("Database initialized")
 
     def fetch_transactions(self, card_id: str) -> Optional[List[Dict[str, Any]]]:
@@ -848,7 +857,7 @@ class ATHopScraper:
                 f"https://at.govt.nz/hop/cards/{first_card_id}/transactions", timeout=10
             )
             return r.status_code == 200
-        except Exception:
+        except requests.RequestException:
             return False
 
     def run(self) -> None:
