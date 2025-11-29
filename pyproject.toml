@@ -6,7 +6,7 @@ authors = [{name = "Paul Oliver", email = "puzza007@gmail.com"}]
 requires-python = ">=3.9"
 dependencies = [
     "requests>=2.31.0",
-    "slackclient>=2.7.3",
+    "slack-sdk>=3.0.0",
     "selenium>=4.15.0",
 ]
 

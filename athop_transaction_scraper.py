@@ -26,8 +26,8 @@ from selenium.common.exceptions import (
     TimeoutException,
     WebDriverException,
 )
-from slack import WebClient  # type: ignore[import-not-found]
-from slack.errors import SlackApiError  # type: ignore[import-not-found]
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 # Set timezone to Pacific/Auckland
 AUCKLAND_TZ = ZoneInfo("Pacific/Auckland")
@@ -504,7 +504,7 @@ class ATHopScraper:
         )
 
         # Build rich block layout
-        blocks = [
+        blocks: List[Dict[str, Any]] = [
             {
                 "type": "header",
                 "text": {
@@ -725,7 +725,7 @@ class ATHopScraper:
             emoji = "🔔"
             alert_type = "Missing Tag On"
 
-        blocks = [
+        blocks: List[Dict[str, Any]] = [
             {
                 "type": "header",
                 "text": {
