@@ -1,37 +1,50 @@
-# Store AT Hop card transactions in an sqlite database
+# AT HOP Transaction Scraper
 
-## Running
+Automatically scrapes Auckland Transport HOP card transactions and stores them in SQLite with optional Slack notifications.
 
-Set environment variables
+## Quick Start
 
-```shell
-export AT_USERNAME=athopaccount@gmail.com
-export AT_PASSWORD=1234password
-export AT_CARDS=7824670200000000001,7824670200000000002
-export AT_DATABASE_FILE=/data/athop.db
-export AT_PERIOD=3600
-# only set slack stuff if you want notifications
-export AT_SLACK_API_TOKEN=xoxp-7626728587-34789439-74538973
-export AT_SLACK_CHANNEL='#notifications'
-```
+```bash
+# Copy and edit environment variables
+cp .env.example .env
+# Edit .env with your credentials
 
-Create an SSH key for litestream backup to remote server (you may not
-want this in which case edit docker-compose to remove the litestream
-section)
-
-```shell
-❯ ssh-keygen
-Generating public/private rsa key pair.
-Enter file in which to save the key (~/.ssh/id_rsa): ~/athop_transaction_scraper/litestream_rsa
-...
-```
-
-Edit `litestream.yml`
-
-Start container
-
-```shell
+# Run with Docker
 docker-compose up -d
+
+# View logs
+docker-compose logs -f
 ```
 
-Your data should now be in `./data/athop.db`
+Your data will be in `./data/athop.db`
+
+## Configuration
+
+All configuration via `.env` file:
+
+**Required:**
+- `AT_USERNAME` - AT HOP account email
+- `AT_PASSWORD` - Account password
+- `AT_CARDS` - Card numbers (comma-separated, optional names: `123:Name,456:Other`)
+
+**Optional:**
+- `AT_PERIOD` - Scrape interval in seconds (default: 3600)
+- `AT_STARTUP_DELAY` - Initial delay in seconds (default: 60)
+- `AT_SLACK_API_TOKEN` - Slack bot token for notifications
+- `AT_SLACK_CHANNEL` - Slack channel (e.g., `#notifications`)
+
+See `.env.example` for template.
+
+## Development
+
+```bash
+# Install dependencies
+uv sync
+
+# Run locally
+uv run python athop_transaction_scraper.py
+
+# Format and type check
+uv run black .
+uv run mypy athop_transaction_scraper.py
+```
