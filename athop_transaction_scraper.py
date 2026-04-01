@@ -584,7 +584,7 @@ class ATHopScraper:
                     "elements": [
                         {
                             "type": "mrkdwn",
-                            "text": f"Transaction ID: {txn.cardtransactionid} | Type: {txn.transaction_type_description}",
+                            "text": f"Transaction ID: {txn.cardtransactionid} | Journey: {txn.journey_id} | Type: {txn.transaction_type_description}",
                         }
                     ],
                 },
@@ -620,7 +620,7 @@ class ATHopScraper:
             cursor = conn.execute(
                 """
                 SELECT cardtransactionid, transaction_type_description,
-                       transactiondatetime, location
+                       transactiondatetime, location, journey_id
                 FROM transactions
                 WHERE card_id = ?
                   AND transaction_type_description IN ('Tag on', 'Tag off')
@@ -636,10 +636,10 @@ class ATHopScraper:
             if len(transactions) < 2:
                 return
 
-            current_txn_id, current_type, current_time, current_location = transactions[
+            current_txn_id, current_type, current_time, current_location, current_journey_id = transactions[
                 0
             ]
-            prev_txn_id, prev_type, prev_time, prev_location = transactions[1]
+            prev_txn_id, prev_type, prev_time, prev_location, prev_journey_id = transactions[1]
 
             # Check for pattern break: same type twice in a row
             if current_type == prev_type:
@@ -673,9 +673,11 @@ class ATHopScraper:
                     current_type,
                     current_time,
                     current_location,
+                    current_journey_id,
                     prev_type,
                     prev_time,
                     prev_location,
+                    prev_journey_id,
                     missing_action,
                 )
 
@@ -706,9 +708,11 @@ class ATHopScraper:
         current_type: str,
         current_time: str,
         current_location: str,
+        current_journey_id: str,
         prev_type: str,
         prev_time: str,
         prev_location: str,
+        prev_journey_id: str,
         missing_action: str,
     ) -> None:
         """Send Slack notification for tap mismatch."""
@@ -746,11 +750,11 @@ class ATHopScraper:
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": f"*Previous Transaction:*\n{prev_time}\n{prev_type} at {prev_location}",
+                        "text": f"*Previous Transaction:*\n{prev_time}\n{prev_type} at {prev_location}\nJourney: {prev_journey_id}",
                     },
                     {
                         "type": "mrkdwn",
-                        "text": f"*Current Transaction:*\n{current_time}\n{current_type} at {current_location}",
+                        "text": f"*Current Transaction:*\n{current_time}\n{current_type} at {current_location}\nJourney: {current_journey_id}",
                     },
                 ],
             },
