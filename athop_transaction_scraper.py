@@ -9,7 +9,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, Generator, List, NamedTuple, Optional
+from typing import Any, Dict, Generator, List, NamedTuple, Optional, Set
 from zoneinfo import ZoneInfo
 
 import requests
@@ -310,6 +310,42 @@ class ATHopScraper:
             ).fetchone()
 
             if res is not None:
+                # Ensure tap_mismatch_notifications exists and has the new schema
+                cols = {
+                    row[1]
+                    for row in conn.execute(
+                        "PRAGMA table_info(tap_mismatch_notifications)"
+                    ).fetchall()
+                }
+                if not cols:
+                    # Table doesn't exist yet, create it
+                    conn.executescript(
+                        """
+                        CREATE TABLE IF NOT EXISTS tap_mismatch_notifications (
+                            card_id TEXT,
+                            journey_id TEXT,
+                            mismatch_type TEXT,
+                            notified_at TEXT,
+                            PRIMARY KEY (card_id, journey_id)
+                        );
+                        """
+                    )
+                    logger.info("Created tap_mismatch_notifications table")
+                elif "transaction_id" in cols:
+                    # Migrate from old schema
+                    conn.executescript(
+                        """
+                        DROP TABLE tap_mismatch_notifications;
+                        CREATE TABLE tap_mismatch_notifications (
+                            card_id TEXT,
+                            journey_id TEXT,
+                            mismatch_type TEXT,
+                            notified_at TEXT,
+                            PRIMARY KEY (card_id, journey_id)
+                        );
+                        """
+                    )
+                    logger.info("Migrated tap_mismatch_notifications table")
                 return
 
             # Try to load schema from file first
@@ -342,11 +378,10 @@ class ATHopScraper:
 
                 CREATE TABLE IF NOT EXISTS tap_mismatch_notifications (
                     card_id TEXT,
-                    transaction_id TEXT,
+                    journey_id TEXT,
                     mismatch_type TEXT,
                     notified_at TEXT,
-                    previous_transaction_id TEXT,
-                    PRIMARY KEY (card_id, transaction_id)
+                    PRIMARY KEY (card_id, journey_id)
                 );
                 """
                 conn.executescript(schema)
@@ -609,119 +644,127 @@ class ATHopScraper:
             logger.error(f"Slack notification failed: {e}")
 
     def _check_new_transactions_for_mismatch(
-        self, card_id: str, card_name: Optional[str], new_count: int
+        self,
+        card_id: str,
+        card_name: Optional[str],
+        new_journey_ids: Set[str],
+        conn: sqlite3.Connection,
     ) -> None:
-        """Check if newly added transactions create tap on/off mismatches."""
+        """Check if previous journeys are incomplete when new journeys appear.
+
+        For each new journey_id, checks that the preceding journey (by journey_id)
+        has both a tag on and tag off. If not, sends a Slack notification about the
+        incomplete journey.
+        """
         if not self.slack_client:
             return
 
-        with self.database_connection() as conn:
-            # Get the last 2 travel transactions (Tag on/Tag off only)
+        numeric_journey_ids = {jid for jid in new_journey_ids if jid.isdigit()}
+        for journey_id in sorted(numeric_journey_ids, key=int):
+            # Find the previous journey_id for this card
             cursor = conn.execute(
                 """
-                SELECT cardtransactionid, transaction_type_description,
-                       transactiondatetime, location, journey_id
+                SELECT DISTINCT journey_id
                 FROM transactions
                 WHERE card_id = ?
                   AND transaction_type_description IN ('Tag on', 'Tag off')
                   AND transactiondatetime NOT LIKE '0001%'
-                ORDER BY transactiondatetime DESC
-                LIMIT 2
+                  AND CAST(journey_id AS INTEGER) < CAST(? AS INTEGER)
+                ORDER BY CAST(journey_id AS INTEGER) DESC
+                LIMIT 1
                 """,
-                (card_id,),
+                (card_id, journey_id),
             )
-            transactions = cursor.fetchall()
+            row = cursor.fetchone()
+            if not row:
+                continue
 
-            # Need at least 2 transactions to detect a mismatch
-            if len(transactions) < 2:
-                return
+            prev_journey_id = row[0]
 
-            current_txn_id, current_type, current_time, current_location, current_journey_id = transactions[
-                0
-            ]
-            prev_txn_id, prev_type, prev_time, prev_location, prev_journey_id = transactions[1]
+            # Check if we've already notified about this journey
+            cursor = conn.execute(
+                """
+                SELECT 1 FROM tap_mismatch_notifications
+                WHERE card_id = ? AND journey_id = ?
+                """,
+                (card_id, prev_journey_id),
+            )
+            if cursor.fetchone():
+                continue
 
-            # Check for pattern break: same type twice in a row
-            if current_type == prev_type:
-                # Determine mismatch type
-                if current_type == "Tag on":
-                    mismatch_type = "missing_tag_off"
-                    missing_action = "tag off"
-                else:
-                    mismatch_type = "missing_tag_on"
-                    missing_action = "tag on"
+            # Get the transactions for the previous journey
+            cursor = conn.execute(
+                """
+                SELECT transaction_type_description, transactiondatetime, location
+                FROM transactions
+                WHERE card_id = ? AND journey_id = ?
+                  AND transaction_type_description IN ('Tag on', 'Tag off')
+                ORDER BY transactiondatetime
+                """,
+                (card_id, prev_journey_id),
+            )
+            prev_txns = cursor.fetchall()
+            prev_types = {t[0] for t in prev_txns}
 
-                # Check if we've already notified about this mismatch
-                cursor = conn.execute(
-                    """
-                    SELECT 1 FROM tap_mismatch_notifications
-                    WHERE card_id = ? AND transaction_id = ?
-                    """,
-                    (card_id, current_txn_id),
-                )
-                if cursor.fetchone():
-                    logger.debug(
-                        f"Already notified about mismatch for transaction {current_txn_id}"
-                    )
-                    return
+            has_tag_on = "Tag on" in prev_types
+            has_tag_off = "Tag off" in prev_types
 
-                # Send notification
-                self._send_mismatch_notification(
+            if has_tag_on and has_tag_off:
+                continue
+
+            if has_tag_on:
+                mismatch_type = "missing_tag_off"
+                missing_action = "tag off"
+            else:
+                mismatch_type = "missing_tag_on"
+                missing_action = "tag on"
+
+            existing_txn = prev_txns[0]
+
+            self._send_mismatch_notification(
+                card_id,
+                card_name,
+                prev_journey_id,
+                existing_txn[0],  # transaction type
+                existing_txn[1],  # datetime
+                existing_txn[2],  # location
+                missing_action,
+            )
+
+            conn.execute(
+                """
+                INSERT INTO tap_mismatch_notifications
+                (card_id, journey_id, mismatch_type, notified_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
                     card_id,
-                    card_name,
-                    current_txn_id,
-                    current_type,
-                    current_time,
-                    current_location,
-                    current_journey_id,
-                    prev_type,
-                    prev_time,
-                    prev_location,
                     prev_journey_id,
-                    missing_action,
-                )
-
-                # Record that we've notified
-                conn.execute(
-                    """
-                    INSERT INTO tap_mismatch_notifications
-                    (card_id, transaction_id, mismatch_type, notified_at, previous_transaction_id)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        card_id,
-                        current_txn_id,
-                        mismatch_type,
-                        datetime.now(AUCKLAND_TZ).isoformat(),
-                        prev_txn_id,
-                    ),
-                )
-                logger.info(
-                    f"Sent mismatch notification for {mismatch_type} on card {card_id}"
-                )
+                    mismatch_type,
+                    datetime.now(AUCKLAND_TZ).isoformat(),
+                ),
+            )
+            logger.info(
+                f"Sent mismatch notification for {mismatch_type} "
+                f"on journey {prev_journey_id} for card {card_id}"
+            )
 
     def _send_mismatch_notification(
         self,
         card_id: str,
         card_name: Optional[str],
-        current_txn_id: str,
-        current_type: str,
-        current_time: str,
-        current_location: str,
-        current_journey_id: str,
-        prev_type: str,
-        prev_time: str,
-        prev_location: str,
-        prev_journey_id: str,
+        journey_id: str,
+        existing_type: str,
+        existing_time: str,
+        existing_location: str,
         missing_action: str,
     ) -> None:
-        """Send Slack notification for tap mismatch."""
+        """Send Slack notification for an incomplete journey."""
         if not self.slack_client:
             return
 
         card_display = f"{card_name}'s Card" if card_name else f"Card {card_id[-4:]}"
 
-        # Choose emoji based on mismatch type
         if missing_action == "tag off":
             emoji = "⚠️"
             alert_type = "Missing Tag Off"
@@ -741,7 +784,7 @@ class ATHopScraper:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Pattern detected:* {prev_type} → {current_type}\n*Missing:* {missing_action}",
+                    "text": f"*Incomplete journey {journey_id}:* {existing_type} without {missing_action}",
                 },
             },
             {"type": "divider"},
@@ -750,11 +793,7 @@ class ATHopScraper:
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": f"*Previous Transaction:*\n{prev_time}\n{prev_type} at {prev_location}\nJourney: {prev_journey_id}",
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Current Transaction:*\n{current_time}\n{current_type} at {current_location}\nJourney: {current_journey_id}",
+                        "text": f"*{existing_type}:*\n{existing_time}\n{existing_location}",
                     },
                 ],
             },
@@ -762,7 +801,6 @@ class ATHopScraper:
         ]
 
         try:
-            # Ensure slack_channel is not None before sending message
             if self.config.slack_channel is None:
                 logger.error(
                     "Slack channel is not configured; cannot send mismatch notification."
@@ -772,7 +810,7 @@ class ATHopScraper:
                 channel=self.config.slack_channel,
                 icon_emoji=":warning:",
                 blocks=blocks,
-                text=f"{alert_type}: {prev_type} → {current_type}",
+                text=f"{alert_type}: Journey {journey_id} - {existing_type} without {missing_action}",
             )
         except SlackApiError as e:
             logger.error(f"Mismatch notification failed: {e}")
@@ -818,11 +856,12 @@ class ATHopScraper:
             for txn in new_transactions:
                 self.send_slack_notification(txn, conn)
 
-        # Check for tap on/off mismatches if we added new transactions
-        if new_transactions:
-            self._check_new_transactions_for_mismatch(
-                card_id, card_name, len(new_transactions)
-            )
+            # Check for tap on/off mismatches if we added new transactions
+            if new_transactions:
+                new_journey_ids = {txn.journey_id for txn in new_transactions}
+                self._check_new_transactions_for_mismatch(
+                    card_id, card_name, new_journey_ids, conn
+                )
 
         return len(new_transactions)
 
