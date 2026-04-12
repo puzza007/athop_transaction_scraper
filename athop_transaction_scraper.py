@@ -310,17 +310,32 @@ class ATHopScraper:
             ).fetchone()
 
             if res is not None:
-                # Migrate tap_mismatch_notifications if it has the old schema
+                # Ensure tap_mismatch_notifications exists and has the new schema
                 cols = {
                     row[1]
                     for row in conn.execute(
                         "PRAGMA table_info(tap_mismatch_notifications)"
                     ).fetchall()
                 }
-                if "transaction_id" in cols:
+                if not cols:
+                    # Table doesn't exist yet, create it
                     conn.executescript(
                         """
-                        DROP TABLE IF EXISTS tap_mismatch_notifications;
+                        CREATE TABLE IF NOT EXISTS tap_mismatch_notifications (
+                            card_id TEXT,
+                            journey_id TEXT,
+                            mismatch_type TEXT,
+                            notified_at TEXT,
+                            PRIMARY KEY (card_id, journey_id)
+                        );
+                        """
+                    )
+                    logger.info("Created tap_mismatch_notifications table")
+                elif "transaction_id" in cols:
+                    # Migrate from old schema
+                    conn.executescript(
+                        """
+                        DROP TABLE tap_mismatch_notifications;
                         CREATE TABLE tap_mismatch_notifications (
                             card_id TEXT,
                             journey_id TEXT,
@@ -644,7 +659,8 @@ class ATHopScraper:
         if not self.slack_client:
             return
 
-        for journey_id in sorted(new_journey_ids, key=int):
+        numeric_journey_ids = {jid for jid in new_journey_ids if jid.isdigit()}
+        for journey_id in sorted(numeric_journey_ids, key=int):
             # Find the previous journey_id for this card
             cursor = conn.execute(
                 """
