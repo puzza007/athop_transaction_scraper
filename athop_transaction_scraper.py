@@ -432,7 +432,7 @@ class ATHopScraper:
                 hop_balance_display=transaction["hop-balance-display"],
                 value=transaction.get("value"),
                 value_display=transaction["value-display"],
-                journey_id=transaction["journey-id"],
+                journey_id=str(transaction["journey-id"]),
                 refundrequested=transaction["refundrequested"],
                 refundable_value=transaction["refundable-value"],
                 transaction_type_description=transaction[
@@ -659,7 +659,7 @@ class ATHopScraper:
         if not self.slack_client:
             return
 
-        numeric_journey_ids = {jid for jid in new_journey_ids if jid.isdigit()}
+        numeric_journey_ids = {jid for jid in new_journey_ids if str(jid).isdigit()}
         for journey_id in sorted(numeric_journey_ids, key=int):
             # Find the previous journey_id for this card
             cursor = conn.execute(
@@ -826,7 +826,7 @@ class ATHopScraper:
 
         new_transactions: List[Transaction] = []
         with self.database_connection() as conn:
-            # First pass: insert all transactions
+            # Insert all transactions
             for transaction in transactions:
                 txn = self.process_transaction(card_id, card_name, transaction)
                 if not txn:
@@ -852,12 +852,12 @@ class ATHopScraper:
                     # Transaction already exists
                     pass
 
-            # Second pass: send notifications after all inserts are done
-            for txn in new_transactions:
-                self.send_slack_notification(txn, conn)
+        # Send notifications after commit so crashes don't cause repeated messages
+        if new_transactions:
+            with self.database_connection() as conn:
+                for txn in new_transactions:
+                    self.send_slack_notification(txn, conn)
 
-            # Check for tap on/off mismatches if we added new transactions
-            if new_transactions:
                 new_journey_ids = {txn.journey_id for txn in new_transactions}
                 self._check_new_transactions_for_mismatch(
                     card_id, card_name, new_journey_ids, conn
