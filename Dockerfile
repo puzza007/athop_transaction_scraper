@@ -60,6 +60,6 @@ RUN uv pip install --system -r pyproject.toml
 VOLUME /data
 
 # Copy application files
-COPY athop_transaction_scraper.py schema.sql /app/
+COPY athop_transaction_scraper.py gtfs.py schema.sql /app/
 
 CMD ["python", "/app/athop_transaction_scraper.py"]

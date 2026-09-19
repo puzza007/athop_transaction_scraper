@@ -16,3 +16,8 @@ services:
       - AT_STARTUP_DELAY=${AT_STARTUP_DELAY:-60}
       - AT_SLACK_API_TOKEN=${AT_SLACK_API_TOKEN}
       - AT_SLACK_CHANNEL=${AT_SLACK_CHANNEL}
+      - AT_GTFS_URL=${AT_GTFS_URL:-https://gtfs.at.govt.nz/gtfs.zip}
+      - AT_GTFS_REFRESH_DAYS=${AT_GTFS_REFRESH_DAYS:-7}
+      - AT_GTFS_DATABASE_FILE=/data/gtfs.db
+      - AT_MAPBOX_TOKEN=${AT_MAPBOX_TOKEN}
+      - AT_MAPBOX_STYLE=${AT_MAPBOX_STYLE:-mapbox/streets-v12}
