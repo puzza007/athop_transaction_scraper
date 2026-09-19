@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # Set timezone to Pacific/Auckland
 ENV TZ=Pacific/Auckland
