@@ -87,6 +87,8 @@ Configuration is managed via a `.env` file (see `.env.example` for template):
 - `AT_SLACK_CHANNEL`: Slack channel ID for notifications (e.g., `#notifications`)
 - `AT_GTFS_URL`: GTFS feed used to geocode stops for map links (default: `https://gtfs.at.govt.nz/gtfs.zip`)
 - `AT_GTFS_REFRESH_DAYS`: How often to re-download GTFS stops (default: 7; `0` disables map links)
+- `AT_MAPBOX_TOKEN`: Mapbox public token; when set, Tag off notifications include a static map image of the journey instead of a Google Maps link
+- `AT_MAPBOX_STYLE`: Mapbox style ID for the image (default: `mapbox/streets-v12`)
 
 The `.env` file is git-ignored to prevent credential leaks. Use `.env.example` as a template.
 

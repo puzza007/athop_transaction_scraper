@@ -34,6 +34,8 @@ All configuration via `.env` file:
 - `AT_SLACK_CHANNEL` - Slack channel (e.g., `#notifications`)
 - `AT_GTFS_URL` - GTFS feed for stop coordinates / map links (default: AT public feed)
 - `AT_GTFS_REFRESH_DAYS` - GTFS refresh interval in days (default: 7, `0` disables)
+- `AT_MAPBOX_TOKEN` - Mapbox public token for static journey map images (optional; falls back to a Google Maps link)
+- `AT_MAPBOX_STYLE` - Mapbox style (default: `mapbox/streets-v12`)
 
 See `.env.example` for template.
 

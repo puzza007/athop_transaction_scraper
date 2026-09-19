@@ -14,6 +14,7 @@ import zipfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, Generator, List, NamedTuple, Optional, Set, Tuple
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import requests
@@ -87,6 +88,47 @@ def google_maps_transit_url(
     )
 
 
+def encode_polyline(points: List[Tuple[float, float]]) -> str:
+    """Encode (lat, lon) points using the Google polyline algorithm."""
+
+    def encode_value(value: int) -> str:
+        value = ~(value << 1) if value < 0 else value << 1
+        chunks = ""
+        while value >= 0x20:
+            chunks += chr((0x20 | (value & 0x1F)) + 63)
+            value >>= 5
+        return chunks + chr(value + 63)
+
+    output = ""
+    prev_lat = prev_lon = 0
+    for lat, lon in points:
+        lat_i, lon_i = round(lat * 1e5), round(lon * 1e5)
+        output += encode_value(lat_i - prev_lat) + encode_value(lon_i - prev_lon)
+        prev_lat, prev_lon = lat_i, lon_i
+    return output
+
+
+def mapbox_journey_image_url(
+    token: str,
+    origin: Tuple[float, float],
+    destination: Tuple[float, float],
+    style: str = "mapbox/streets-v12",
+) -> str:
+    """Mapbox Static Images URL showing a journey between two stops."""
+    path = quote(encode_polyline([origin, destination]), safe="")
+    overlays = ",".join(
+        [
+            f"path-4+1d4ed8-0.7({path})",
+            f"pin-s-a+2563eb({origin[1]},{origin[0]})",
+            f"pin-s-b+dc2626({destination[1]},{destination[0]})",
+        ]
+    )
+    return (
+        f"https://api.mapbox.com/styles/v1/{style}/static/{overlays}/auto/600x400@2x"
+        f"?padding=60&access_token={token}"
+    )
+
+
 STOPS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS stops (
     name_key TEXT PRIMARY KEY,
@@ -148,6 +190,9 @@ class Config:
         self.gtfs_url = os.getenv("AT_GTFS_URL", "https://gtfs.at.govt.nz/gtfs.zip")
         # 0 disables GTFS stop lookups (and map links) entirely
         self.gtfs_refresh_days = self._get_int_env("AT_GTFS_REFRESH_DAYS", 7)
+        # Optional: public Mapbox token for static journey map images
+        self.mapbox_token = os.getenv("AT_MAPBOX_TOKEN")
+        self.mapbox_style = os.getenv("AT_MAPBOX_STYLE", "mapbox/streets-v12")
 
     @staticmethod
     def _get_required(key: str) -> str:
@@ -757,21 +802,38 @@ class ATHopScraper:
                 }
             )
 
-        # Add a journey map link for Tag off events when both stops are known
+        # Add a journey map for Tag off events when both stops are known:
+        # a Mapbox static image if a token is configured, else a Google link
         journey_origin = self._get_journey_origin(txn, conn) if conn else None
         if conn and journey_origin and stop:
             origin_stop = self._lookup_stop(conn, journey_origin[0])
             if origin_stop:
-                blocks.append(
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f":world_map: <{google_maps_transit_url(origin_stop, stop)}|View journey on map> "
-                            f"({journey_origin[0]} → {txn.location})",
-                        },
-                    }
-                )
+                journey_label = f"{journey_origin[0]} → {txn.location}"
+                if self.config.mapbox_token:
+                    blocks.append(
+                        {
+                            "type": "image",
+                            "image_url": mapbox_journey_image_url(
+                                self.config.mapbox_token,
+                                origin_stop,
+                                stop,
+                                self.config.mapbox_style,
+                            ),
+                            "alt_text": journey_label,
+                            "title": {"type": "plain_text", "text": journey_label},
+                        }
+                    )
+                else:
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f":world_map: <{google_maps_transit_url(origin_stop, stop)}|View journey on map> "
+                                f"({journey_label})",
+                            },
+                        }
+                    )
 
         blocks.extend(
             [
