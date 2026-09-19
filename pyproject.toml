@@ -3,7 +3,7 @@ name = "athop_transaction_scraper"
 version = "0.1.0"
 description = "AT HOP transaction scraper with Slack notifications"
 authors = [{name = "Paul Oliver", email = "puzza007@gmail.com"}]
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31.0",
     "slack-sdk>=3.0.0",
