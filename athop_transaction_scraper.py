@@ -8,8 +8,9 @@ import sqlite3
 import sys
 import time
 from contextlib import contextmanager
-from datetime import datetime
-from typing import Any, Dict, Generator, List, NamedTuple, Optional, Set
+from datetime import datetime, timedelta
+from typing import Any, Dict, Generator, List, NamedTuple, Optional, Set, Tuple
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import requests
@@ -29,6 +30,8 @@ from selenium.common.exceptions import (
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
+from gtfs import GtfsStore, Journey, encode_polyline, simplify_path
+
 # Set timezone to Pacific/Auckland
 AUCKLAND_TZ = ZoneInfo("Pacific/Auckland")
 os.environ["TZ"] = "Pacific/Auckland"
@@ -39,6 +42,57 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger("athop")
+
+
+def google_maps_place_url(lat: float, lon: float) -> str:
+    """Google Maps link to a single point."""
+    return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+
+
+def google_maps_transit_url(
+    origin: Tuple[float, float], destination: Tuple[float, float]
+) -> str:
+    """Google Maps transit directions link between two points."""
+    return (
+        "https://www.google.com/maps/dir/?api=1"
+        f"&origin={origin[0]},{origin[1]}"
+        f"&destination={destination[0]},{destination[1]}"
+        "&travelmode=transit"
+    )
+
+
+SLACK_IMAGE_URL_MAX_LEN = 3000
+
+
+def mapbox_journey_image_url(
+    token: str, journey: Journey, style: str = "mapbox/streets-v12"
+) -> str:
+    """Mapbox Static Images URL showing a journey's path between two stops.
+
+    Slack rejects image URLs over 3000 characters, so long shapes are
+    progressively simplified until the URL fits.
+    """
+    path = journey.path
+    tolerance = 0.00005
+    while True:
+        overlays = ",".join(
+            [
+                f"path-4+1d4ed8-0.8({quote(encode_polyline(path), safe='')})",
+                f"pin-s-a+2563eb({journey.origin[1]},{journey.origin[0]})",
+                f"pin-s-b+dc2626({journey.destination[1]},{journey.destination[0]})",
+            ]
+        )
+        url = (
+            f"https://api.mapbox.com/styles/v1/{style}/static/{overlays}/auto/600x400@2x"
+            f"?padding=60&access_token={token}"
+        )
+        if len(url) <= SLACK_IMAGE_URL_MAX_LEN or len(path) <= 2:
+            return url
+        tolerance *= 2
+        path = simplify_path(journey.path, tolerance)
+        if len(path) > 2 and len(path) == len(journey.path):
+            # Simplification is not converging; fall back to a straight line
+            path = [journey.origin, journey.destination]
 
 
 class Transaction(NamedTuple):
@@ -83,6 +137,17 @@ class Config:
         self.slack_channel = os.getenv("AT_SLACK_CHANNEL")
         self.max_retries = self._get_int_env("AT_MAX_RETRIES", 3)
         self.request_timeout = self._get_int_env("AT_REQUEST_TIMEOUT", 30)
+        self.gtfs_url = os.getenv("AT_GTFS_URL", "https://gtfs.at.govt.nz/gtfs.zip")
+        # 0 disables GTFS stop lookups (and map links) entirely
+        self.gtfs_refresh_days = self._get_int_env("AT_GTFS_REFRESH_DAYS", 7)
+        # Rebuildable GTFS cache; lives next to the main database by default
+        self.gtfs_database_file = os.getenv(
+            "AT_GTFS_DATABASE_FILE",
+            os.path.join(os.path.dirname(self.database_file), "gtfs.db"),
+        )
+        # Optional: public Mapbox token for static journey map images
+        self.mapbox_token = os.getenv("AT_MAPBOX_TOKEN")
+        self.mapbox_style = os.getenv("AT_MAPBOX_STYLE", "mapbox/streets-v12")
 
     @staticmethod
     def _get_required(key: str) -> str:
@@ -126,6 +191,8 @@ class ATHopScraper:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.session: Optional[requests.Session] = None
+        self.gtfs = GtfsStore(config.gtfs_database_file)
+        self.gtfs_enabled = config.gtfs_refresh_days > 0
         self.slack_client: Optional[WebClient] = None
         self._init_slack()
 
@@ -387,6 +454,17 @@ class ATHopScraper:
                 conn.executescript(schema)
             logger.info("Database initialized")
 
+    def refresh_gtfs(self) -> None:
+        """Download the AT GTFS feed into the local cache if it is stale."""
+        if not self.gtfs_enabled:
+            return
+        try:
+            if self.gtfs.is_stale(timedelta(days=self.config.gtfs_refresh_days)):
+                self.gtfs.refresh(self.config.gtfs_url, datetime.now(AUCKLAND_TZ))
+        except Exception as e:
+            # GTFS is an enhancement; never let it block scraping
+            logger.exception(f"GTFS refresh failed: {e}")
+
     def fetch_transactions(self, card_id: str) -> Optional[List[Dict[str, Any]]]:
         """Fetch transactions for a single card."""
         if not self.session:
@@ -455,25 +533,32 @@ class ATHopScraper:
         except ValueError:
             return None
 
-    def _get_trip_stats(
-        self, txn: Transaction, conn: sqlite3.Connection
-    ) -> Optional[TripStats]:
-        """Get trip statistics for a Tag off transaction."""
+    @staticmethod
+    def _get_journey_origin(
+        txn: Transaction, conn: sqlite3.Connection
+    ) -> Optional[Tuple[str, str]]:
+        """Return (location, datetime) of the Tag on for a Tag off transaction."""
         if txn.transaction_type_description != "Tag off":
             return None
 
-        # Find the matching Tag on for this journey
-        tag_on = conn.execute(
+        # A journey can have several legs (transfers), so take the most
+        # recent Tag on before this Tag off
+        return conn.execute(
             """
             SELECT location, transactiondatetime FROM transactions
             WHERE card_id = ? AND journey_id = ? AND transaction_type_description = 'Tag on'
+              AND transactiondatetime <= ?
+              AND transactiondatetime NOT LIKE '0001%'
+            ORDER BY transactiondatetime DESC
+            LIMIT 1
             """,
-            (txn.card_id, txn.journey_id),
+            (txn.card_id, txn.journey_id, txn.transactiondatetime),
         ).fetchone()
 
-        if not tag_on:
-            return None
-
+    def _get_trip_stats(
+        self, txn: Transaction, conn: sqlite3.Connection, tag_on: Tuple[str, str]
+    ) -> Optional[TripStats]:
+        """Get trip statistics for a Tag off transaction given its Tag on."""
         origin, tag_on_time = tag_on
         current_mins = self._parse_duration_mins(tag_on_time, txn.transactiondatetime)
         if not current_mins:
@@ -538,6 +623,18 @@ class ATHopScraper:
             else (f"${txn.value:.2f}" if txn.value is not None else "N/A")
         )
 
+        # Link the location to a map when the stop is known. GTFS lookups
+        # must never break a notification, so failures just drop the link.
+        location_display = txn.location
+        stop = None
+        if self.gtfs_enabled:
+            try:
+                stop = self.gtfs.lookup_stop(txn.location)
+            except Exception as e:
+                logger.warning(f"GTFS stop lookup failed for {txn.location!r}: {e}")
+        if stop:
+            location_display = f"<{google_maps_place_url(*stop)}|{txn.location}>"
+
         # Build rich block layout
         blocks: List[Dict[str, Any]] = [
             {
@@ -562,7 +659,7 @@ class ATHopScraper:
                 "type": "section",
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Description:*\n{txn.description}"},
-                    {"type": "mrkdwn", "text": f"*Location:*\n{txn.location}"},
+                    {"type": "mrkdwn", "text": f"*Location:*\n{location_display}"},
                 ],
             },
             {
@@ -578,7 +675,12 @@ class ATHopScraper:
         ]
 
         # Add trip stats for Tag off events (requires db connection)
-        trip_stats = self._get_trip_stats(txn, conn) if conn else None
+        journey_origin = self._get_journey_origin(txn, conn) if conn else None
+        trip_stats = (
+            self._get_trip_stats(txn, conn, journey_origin)
+            if conn and journey_origin
+            else None
+        )
         if trip_stats:
             current_mins, avg_mins, stddev_mins, sample_count = trip_stats
 
@@ -612,6 +714,55 @@ class ATHopScraper:
                 }
             )
 
+        # Add the inferred route and a journey map for Tag off events:
+        # a Mapbox static image if a token is configured, else a Google link
+        journey = None
+        if journey_origin and self.gtfs_enabled:
+            try:
+                journey = self.gtfs.find_journey(
+                    journey_origin[0],
+                    txn.location,
+                    datetime.fromisoformat(journey_origin[1]),
+                )
+            except Exception as e:
+                logger.warning(f"GTFS journey lookup failed: {e}")
+        if journey and journey_origin:
+            journey_label = f"{journey_origin[0]} → {txn.location}"
+            if journey.route_short_name:
+                route_text = f"*Route:*\n{journey.route_short_name}"
+                if journey.trip_headsign:
+                    route_text += f" to {journey.trip_headsign}"
+                blocks.append(
+                    {
+                        "type": "section",
+                        "fields": [{"type": "mrkdwn", "text": route_text}],
+                    }
+                )
+                journey_label = f"{journey.route_short_name}: {journey_label}"
+            if self.config.mapbox_token:
+                blocks.append(
+                    {
+                        "type": "image",
+                        "image_url": mapbox_journey_image_url(
+                            self.config.mapbox_token,
+                            journey,
+                            self.config.mapbox_style,
+                        ),
+                        "alt_text": journey_label,
+                        "title": {"type": "plain_text", "text": journey_label},
+                    }
+                )
+            else:
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f":world_map: <{google_maps_transit_url(journey.origin, journey.destination)}|View journey on map>",
+                        },
+                    }
+                )
+
         blocks.extend(
             [
                 {
@@ -639,6 +790,8 @@ class ATHopScraper:
                 icon_emoji=":robot_face:",
                 blocks=blocks,
                 text=f"New HOP transaction: {txn.description} at {txn.location}",  # Fallback text
+                unfurl_links=False,
+                unfurl_media=False,
             )
         except SlackApiError as e:
             logger.error(f"Slack notification failed: {e}")
@@ -886,6 +1039,10 @@ class ATHopScraper:
         logger.info(
             f"Scraping completed in {duration:.1f}s. New transactions: {total_new}"
         )
+
+        # Refresh GTFS after scraping so a slow or broken feed never delays
+        # transaction notifications
+        self.refresh_gtfs()
         return True
 
     def _test_session(self) -> bool:

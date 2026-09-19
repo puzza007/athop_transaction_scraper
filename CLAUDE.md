@@ -51,11 +51,14 @@ docker buildx build --platform linux/amd64,linux/arm64 -t puzza007/athop_transac
    - Runs in continuous loop with configurable interval
    - Uses Pacific/Auckland timezone for logging and timestamps
 
-2. **Database**: SQLite database at `/data/athop.db` with single `transactions` table
-   - Composite primary key: (card_id, cardtransactionid)
+2. **Database**: SQLite database at `/data/athop.db`
+   - `transactions` table, composite primary key: (card_id, cardtransactionid)
+   - `tap_mismatch_notifications` tracks incomplete-journey alerts already sent
    - Auto-created on first run using `schema.sql`
 
-3. **Docker Setup**: Lightweight build that:
+3. **GTFS cache** (`gtfs.py`): Separate, rebuildable SQLite file (`gtfs.db` next to the main DB) holding the AT GTFS feed (stops, trips, stop_times, shapes, calendar), refreshed weekly. Used to geocode HOP stop names and to infer the route/trip taken between a Tag on and Tag off so notifications can show the route number and a Mapbox static map of the actual path.
+
+4. **Docker Setup**: Lightweight build that:
    - Uses uv for fast dependency management
    - Installs Chrome (AMD64) or Chromium (ARM64) for Selenium
    - Multi-architecture support (linux/amd64, linux/arm64)
@@ -83,6 +86,11 @@ Configuration is managed via a `.env` file (see `.env.example` for template):
 - `AT_STARTUP_DELAY`: Initial delay before first scrape in seconds (default: 60)
 - `AT_SLACK_API_TOKEN`: Slack bot token for notifications
 - `AT_SLACK_CHANNEL`: Slack channel ID for notifications (e.g., `#notifications`)
+- `AT_GTFS_URL`: GTFS feed used to geocode stops for map links (default: `https://gtfs.at.govt.nz/gtfs.zip`)
+- `AT_GTFS_REFRESH_DAYS`: How often to re-download the GTFS feed (default: 7; `0` disables map/route features)
+- `AT_GTFS_DATABASE_FILE`: GTFS cache path (default: `gtfs.db` alongside `AT_DATABASE_FILE`)
+- `AT_MAPBOX_TOKEN`: Mapbox public token; when set, Tag off notifications include a static map image of the journey instead of a Google Maps link
+- `AT_MAPBOX_STYLE`: Mapbox style ID for the image (default: `mapbox/streets-v12`)
 
 The `.env` file is git-ignored to prevent credential leaks. Use `.env.example` as a template.
 
