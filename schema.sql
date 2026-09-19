@@ -23,3 +23,16 @@ create table if not exists tap_mismatch_notifications (
        notified_at TEXT,
        PRIMARY KEY (card_id, journey_id)
 );
+
+create table if not exists stops (
+       name_key TEXT PRIMARY KEY,
+       stop_name TEXT,
+       stop_code TEXT,
+       lat REAL,
+       lon REAL
+);
+
+create table if not exists gtfs_meta (
+       key TEXT PRIMARY KEY,
+       value TEXT
+);

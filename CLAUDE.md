@@ -51,8 +51,10 @@ docker buildx build --platform linux/amd64,linux/arm64 -t puzza007/athop_transac
    - Runs in continuous loop with configurable interval
    - Uses Pacific/Auckland timezone for logging and timestamps
 
-2. **Database**: SQLite database at `/data/athop.db` with single `transactions` table
-   - Composite primary key: (card_id, cardtransactionid)
+2. **Database**: SQLite database at `/data/athop.db`
+   - `transactions` table, composite primary key: (card_id, cardtransactionid)
+   - `tap_mismatch_notifications` tracks incomplete-journey alerts already sent
+   - `stops` / `gtfs_meta` cache AT GTFS stop coordinates (refreshed weekly) used to add Google Maps links to Slack notifications
    - Auto-created on first run using `schema.sql`
 
 3. **Docker Setup**: Lightweight build that:
@@ -83,6 +85,8 @@ Configuration is managed via a `.env` file (see `.env.example` for template):
 - `AT_STARTUP_DELAY`: Initial delay before first scrape in seconds (default: 60)
 - `AT_SLACK_API_TOKEN`: Slack bot token for notifications
 - `AT_SLACK_CHANNEL`: Slack channel ID for notifications (e.g., `#notifications`)
+- `AT_GTFS_URL`: GTFS feed used to geocode stops for map links (default: `https://gtfs.at.govt.nz/gtfs.zip`)
+- `AT_GTFS_REFRESH_DAYS`: How often to re-download GTFS stops (default: 7; `0` disables map links)
 
 The `.env` file is git-ignored to prevent credential leaks. Use `.env.example` as a template.
 

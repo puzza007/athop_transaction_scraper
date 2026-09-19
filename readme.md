@@ -32,6 +32,8 @@ All configuration via `.env` file:
 - `AT_STARTUP_DELAY` - Initial delay in seconds (default: 60)
 - `AT_SLACK_API_TOKEN` - Slack bot token for notifications
 - `AT_SLACK_CHANNEL` - Slack channel (e.g., `#notifications`)
+- `AT_GTFS_URL` - GTFS feed for stop coordinates / map links (default: AT public feed)
+- `AT_GTFS_REFRESH_DAYS` - GTFS refresh interval in days (default: 7, `0` disables)
 
 See `.env.example` for template.
 
