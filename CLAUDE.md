@@ -58,10 +58,11 @@ docker buildx build --platform linux/amd64,linux/arm64 -t puzza007/athop_transac
 
 3. **GTFS cache** (`gtfs.py`): Separate, rebuildable SQLite file (`gtfs.db` next to the main DB) holding the AT GTFS feed (stops, trips, stop_times, shapes, calendar), refreshed weekly. Used to geocode HOP stop names and to infer the route/trip taken between a Tag on and Tag off so notifications can show the route number and a Mapbox static map of the actual path.
 
-4. **Docker Setup**: Lightweight build that:
-   - Uses uv for fast dependency management
-   - Installs Chrome (AMD64) or Chromium (ARM64) for Selenium
+4. **Docker Setup**: Lightweight build (~370 MB) that:
+   - Uses uv for fast dependency management on `python:3.13-slim-bookworm`
+   - Installs Debian's Chromium + chromium-driver for Selenium on both architectures
    - Multi-architecture support (linux/amd64, linux/arm64)
+   - Runs as an unprivileged `app` user; set `APP_UID`/`APP_GID` in `.env` to match the owner of `./data` (build args, so rebuild after changing)
 
 ### Authentication Flow
 

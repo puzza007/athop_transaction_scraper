@@ -4,6 +4,10 @@ services:
     container_name: at_hop_transaction_scraper
     build:
       context: .
+      args:
+        # Match the owner of ./data so the container can write to it
+        UID: ${APP_UID:-1000}
+        GID: ${APP_GID:-1000}
     restart: always
     volumes:
       - "./data:/data"
