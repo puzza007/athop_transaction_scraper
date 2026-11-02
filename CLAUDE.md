@@ -85,6 +85,7 @@ Configuration is managed via a `.env` file (see `.env.example` for template):
 **Optional:**
 - `AT_PERIOD`: Scraping interval in seconds (default: 3600)
 - `AT_STARTUP_DELAY`: Initial delay before first scrape in seconds (default: 60)
+- `AT_RUN_ONCE`: `true` to scrape once and exit (exit code 1 on failure); pair with `RESTART_POLICY=no` in `.env` for Docker
 - `AT_SLACK_API_TOKEN`: Slack bot token for notifications
 - `AT_SLACK_CHANNEL`: Slack channel ID for notifications (e.g., `#notifications`)
 - `AT_GTFS_URL`: GTFS feed used to geocode stops for map links (default: `https://gtfs.at.govt.nz/gtfs.zip`)
