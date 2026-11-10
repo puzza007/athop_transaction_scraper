@@ -133,6 +133,20 @@ def normalize_stop_name(name: str) -> str:
     return " ".join(tokens)
 
 
+def stop_name_keys(name: str) -> List[str]:
+    """Name keys a HOP location may match, most specific first.
+
+    HOP records train stations by bare name ("Waitemata", "Sylvia Park")
+    while GTFS calls them "Waitemata Train Station", so also try that.
+    The bare name can still match an unrelated stop (Sylvia Park bus
+    station), so callers that need the right one should consider both.
+    """
+    key = normalize_stop_name(name)
+    if key.endswith(" station"):
+        return [key]
+    return [key, f"{key} train station"]
+
+
 def parse_gtfs_time(value: str) -> Optional[int]:
     """Parse GTFS HH:MM:SS (hours may exceed 23) to seconds since midnight."""
     try:
@@ -389,15 +403,16 @@ class GtfsStore:
     @staticmethod
     def _stop_ids_for_name(conn: sqlite3.Connection, name: str) -> List[str]:
         """All stop IDs matching a HOP location, including station platforms."""
-        key = normalize_stop_name(name)
+        keys = stop_name_keys(name)
+        marks = ",".join("?" * len(keys))
         rows = conn.execute(
-            """
-            SELECT stop_id FROM stops WHERE name_key = ?
+            f"""
+            SELECT stop_id FROM stops WHERE name_key IN ({marks})
             UNION
             SELECT stop_id FROM stops
-            WHERE parent_station IN (SELECT stop_id FROM stops WHERE name_key = ?)
+            WHERE parent_station IN (SELECT stop_id FROM stops WHERE name_key IN ({marks}))
             """,
-            (key, key),
+            keys + keys,
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -406,10 +421,13 @@ class GtfsStore:
         if not self.available():
             return None
         with self.connect() as conn:
-            row = conn.execute(
-                "SELECT lat, lon FROM stops WHERE name_key = ? LIMIT 1",
-                (normalize_stop_name(name),),
-            ).fetchone()
+            # Prefer an exact name match over the train station fallback
+            for key in stop_name_keys(name):
+                row = conn.execute(
+                    "SELECT lat, lon FROM stops WHERE name_key = ? LIMIT 1", (key,)
+                ).fetchone()
+                if row:
+                    break
         return (row[0], row[1]) if row else None
 
     @staticmethod
