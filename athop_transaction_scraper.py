@@ -133,6 +133,8 @@ class Config:
         self.database_file = self._get_required("AT_DATABASE_FILE")
         self.period = self._get_int_env("AT_PERIOD", 3600)
         self.startup_delay = self._get_int_env("AT_STARTUP_DELAY", 60)
+        # Scrape once and exit (e.g. for cron) instead of looping forever
+        self.run_once = os.getenv("AT_RUN_ONCE", "").lower() in ("1", "true", "yes")
         self.slack_token = os.getenv("AT_SLACK_API_TOKEN")
         self.slack_channel = os.getenv("AT_SLACK_CHANNEL")
         self.max_retries = self._get_int_env("AT_MAX_RETRIES", 3)
@@ -1066,6 +1068,10 @@ class ATHopScraper:
 
         # Initial setup
         self.ensure_database()
+
+        if self.config.run_once:
+            logger.info("Configured for run once (AT_RUN_ONCE); will exit after this scrape")
+            sys.exit(0 if self.run_once() else 1)
 
         # Wait before first run (in case of restart due to error)
         if self.config.startup_delay > 0:
